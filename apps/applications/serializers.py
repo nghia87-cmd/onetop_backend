@@ -1,0 +1,24 @@
+from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
+from .models import Application
+from apps.jobs.serializers import JobSerializer
+from apps.users.serializers import UserSerializer
+
+class ApplicationSerializer(serializers.ModelSerializer):
+    # Nhúng thông tin Job và Candidate để Frontend hiển thị chi tiết
+    job_info = JobSerializer(source='job', read_only=True)
+    candidate_info = UserSerializer(source='candidate', read_only=True)
+
+    class Meta:
+        model = Application
+        fields = '__all__'
+        read_only_fields = ['id', 'candidate', 'created_at', 'updated_at', 'status']
+        
+        # Validate: Đảm bảo 1 người không nộp 2 lần cho 1 job ngay tại Serializer
+        validators = [
+            UniqueTogetherValidator(
+                queryset=Application.objects.all(),
+                fields=['job', 'candidate'],
+                message='Bạn đã ứng tuyển vào công việc này rồi.'
+            )
+        ]

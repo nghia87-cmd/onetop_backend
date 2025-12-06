@@ -1,0 +1,35 @@
+# --- Python General ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Django ---
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# --- Environment Variables (QUAN TRỌNG: Không được xóa dòng này) ---
+.env
+.env.local
+.env.production
+
+# --- Static & Media (File sinh ra tự động & file user upload) ---
+staticfiles/
+media/
+
+# --- Virtual Environment (Môi trường ảo) ---
+venv/
+env/
+.venv/
+.env_win/
+
+# --- IDE Settings (Cấu hình editor của riêng bạn) ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db

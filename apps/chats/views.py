@@ -1,0 +1,31 @@
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.models import Q
+from .models import Conversation, Message
+from .serializers import ConversationSerializer, MessageSerializer
+
+class ConversationViewSet(viewsets.ModelViewSet):
+    serializer_class = ConversationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Conversation.objects.filter(
+            Q(participant1=user) | Q(participant2=user)
+        ).order_by('-last_message_at')
+
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
+        conversation = self.get_object()
+        if request.user not in [conversation.participant1, conversation.participant2]:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+            
+        messages = conversation.messages.all().order_by('created_at')
+        page = self.paginate_queryset(messages)
+        if page is not None:
+            serializer = MessageSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
