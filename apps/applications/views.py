@@ -1,7 +1,8 @@
-from rest_framework import viewsets, permissions, status, filters
-from rest_framework.response import Response
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
 from .models import Application
 from .serializers import ApplicationSerializer
 
@@ -14,37 +15,27 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at']
 
     def get_queryset(self):
-        """
-        Phân quyền dữ liệu (Data Privacy):
-        - Nếu là Ứng viên (CANDIDATE): Chỉ xem đơn của chính mình.
-        - Nếu là NTD (RECRUITER): Xem tất cả đơn nộp vào các Job thuộc công ty mình sở hữu.
-        """
         user = self.request.user
         
+        # --- TỐI ƯU QUERY ---
+        # select_related: Lấy luôn thông tin Job, Company của Job đó, và Ứng viên
+        queryset = Application.objects.select_related('job', 'job__company', 'candidate')
+        
         if user.user_type == 'CANDIDATE':
-            return Application.objects.filter(candidate=user).order_by('-created_at')
+            return queryset.filter(candidate=user).order_by('-created_at')
             
         elif user.user_type == 'RECRUITER':
-            # Lấy tất cả job của các công ty do user này sở hữu
-            return Application.objects.filter(job__company__owner=user).order_by('-created_at')
+            return queryset.filter(job__company__owner=user).order_by('-created_at')
             
-        # Admin thấy hết
-        return Application.objects.all()
+        return queryset.all()
 
     def perform_create(self, serializer):
-        # Tự động gán người nộp đơn là User đang login
-        serializer.save(candidate=self.request.request.user)
+        serializer.save(candidate=self.request.user)
 
     @action(detail=True, methods=['patch'], url_path='update-status')
     def update_status(self, request, pk=None):
-        """
-        Custom API cho NTD cập nhật trạng thái đơn (Duyệt/Từ chối)
-        URL: PATCH /api/v1/applications/{id}/update-status/
-        Body: { "status": "INTERVIEW", "note": "Hẹn phỏng vấn thứ 6" }
-        """
         application = self.get_object()
         
-        # Chỉ chủ sở hữu Job mới được đổi trạng thái đơn
         if application.job.company.owner != request.user:
             return Response(
                 {"detail": "Bạn không có quyền duyệt đơn này."}, 

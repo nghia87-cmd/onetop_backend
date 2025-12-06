@@ -11,7 +11,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Conversation.objects.filter(
+        
+        # --- TỐI ƯU QUERY ---
+        # Load sẵn thông tin 2 người tham gia và thông tin Job
+        return Conversation.objects.select_related(
+            'participant1', 'participant2', 'job'
+        ).filter(
             Q(participant1=user) | Q(participant2=user)
         ).order_by('-last_message_at')
 
@@ -21,7 +26,9 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if request.user not in [conversation.participant1, conversation.participant2]:
             return Response(status=status.HTTP_403_FORBIDDEN)
             
-        messages = conversation.messages.all().order_by('created_at')
+        # Load sẵn thông tin người gửi để hiển thị avatar/tên
+        messages = conversation.messages.select_related('sender').all().order_by('created_at')
+        
         page = self.paginate_queryset(messages)
         if page is not None:
             serializer = MessageSerializer(page, many=True)

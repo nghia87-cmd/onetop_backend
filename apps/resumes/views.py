@@ -1,5 +1,5 @@
-from rest_framework import viewsets, permissions, status
-from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework import viewsets, permissions
+from rest_framework.exceptions import NotFound
 from .models import Resume, WorkExperience, Education, Skill
 from .serializers import (
     ResumeSerializer, 
@@ -13,7 +13,11 @@ class ResumeViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Resume.objects.filter(user=self.request.user).order_by('-created_at')
+        # --- TỐI ƯU QUERY ---
+        # prefetch_related: Gom tất cả Kinh nghiệm, Học vấn, Kỹ năng trong 1 lần lấy
+        return Resume.objects.prefetch_related(
+            'experiences', 'educations', 'skills'
+        ).filter(user=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
