@@ -181,7 +181,7 @@ class NotificationAPITest(APITestCase):
             is_read=False
         )
         
-        self.notifications_url = reverse('notification-list')
+        self.notifications_url = reverse('v1:notification-list')
 
     def test_list_user_notifications(self):
         """Test user chỉ xem được notifications của mình"""
@@ -205,7 +205,7 @@ class NotificationAPITest(APITestCase):
         """Test đánh dấu notification đã đọc"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('notification-read', args=[self.notification1.id])
+        url = reverse('v1:notification-read', args=[self.notification1.id])
         response = self.client.patch(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -217,7 +217,7 @@ class NotificationAPITest(APITestCase):
         """Test đánh dấu tất cả notifications đã đọc"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('notification-read-all')
+        url = reverse('v1:notification-read-all')
         response = self.client.patch(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -257,7 +257,7 @@ class NotificationAPITest(APITestCase):
         """Test xem chi tiết notification"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('notification-detail', args=[self.notification1.id])
+        url = reverse('v1:notification-detail', args=[self.notification1.id])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -276,7 +276,7 @@ class NotificationAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('notification-read', args=[other_notification.id])
+        url = reverse('v1:notification-read', args=[other_notification.id])
         response = self.client.patch(url)
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -306,7 +306,7 @@ class NotificationAPITest(APITestCase):
         """Test không thể xóa notification (readonly viewset)"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('notification-detail', args=[self.notification1.id])
+        url = reverse('v1:notification-detail', args=[self.notification1.id])
         response = self.client.delete(url)
         
         # Expect 405 Method Not Allowed

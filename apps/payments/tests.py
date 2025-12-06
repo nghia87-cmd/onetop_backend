@@ -154,7 +154,7 @@ class PaymentAPITest(APITestCase):
             allow_view_contact=True
         )
         
-        self.packages_url = reverse('servicepackage-list')
+        self.packages_url = reverse('v1:servicepackage-list')
 
     def test_list_service_packages(self):
         """Test danh sách gói dịch vụ"""
@@ -165,7 +165,7 @@ class PaymentAPITest(APITestCase):
 
     def test_get_package_detail(self):
         """Test xem chi tiết gói dịch vụ"""
-        url = reverse('servicepackage-detail', args=[self.credit_package.id])
+        url = reverse('v1:servicepackage-detail', args=[self.credit_package.id])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -176,7 +176,7 @@ class PaymentAPITest(APITestCase):
         self.client.force_authenticate(user=self.recruiter)
         
         # Giả sử có endpoint để tạo transaction
-        transactions_url = reverse('transaction-list')
+        transactions_url = reverse('v1:transaction-list')
         
         data = {
             'package': self.credit_package.id
@@ -261,7 +261,7 @@ class PaymentAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.recruiter)
         
-        transactions_url = reverse('transaction-list')
+        transactions_url = reverse('v1:transaction-list')
         response = self.client.get(transactions_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -270,7 +270,7 @@ class PaymentAPITest(APITestCase):
 
     def test_unauthenticated_cannot_create_transaction(self):
         """Test chưa đăng nhập không thể tạo giao dịch"""
-        transactions_url = reverse('transaction-list')
+        transactions_url = reverse('v1:transaction-list')
         
         data = {
             'package': self.credit_package.id
@@ -324,7 +324,7 @@ class VNPayIntegrationTest(TestCase):
             mock_vnpay_instance.get_payment_url.return_value = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=50000000&vnp_Command=pay'
             
             # Call API
-            url = reverse('transaction-create-payment')
+            url = reverse('v1:transaction-create-payment')
             data = {'package_id': self.package.id}
             response = self.client.post(url, data, format='json')
             
@@ -394,7 +394,7 @@ class VNPayIntegrationTest(TestCase):
             }
             
             # Call return URL endpoint
-            url = reverse('vnpay-return')
+            url = reverse('v1:vnpay-return')
             response = self.client.get(url, callback_params)
             
             # Assert transaction updated
@@ -437,7 +437,7 @@ class VNPayIntegrationTest(TestCase):
                 'vnp_SecureHash': 'fake_hash'
             }
             
-            url = reverse('vnpay-return')
+            url = reverse('v1:vnpay-return')
             response = self.client.get(url, callback_params)
             
             # Assert transaction status = FAILED
@@ -471,7 +471,7 @@ class VNPayIntegrationTest(TestCase):
                 'vnp_SecureHash': 'fake_hash'
             }
             
-            url = reverse('vnpay-return')
+            url = reverse('v1:vnpay-return')
             response = self.client.get(url, callback_params)
             
             # Assert VIP permissions granted
@@ -502,7 +502,7 @@ class VNPayIntegrationTest(TestCase):
                 'vnp_SecureHash': 'wrong_hash'
             }
             
-            url = reverse('vnpay-return')
+            url = reverse('v1:vnpay-return')
             response = self.client.get(url, callback_params)
             
             # Transaction should remain PENDING

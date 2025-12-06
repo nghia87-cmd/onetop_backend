@@ -144,7 +144,7 @@ class ApplicationAPITest(APITestCase):
             status='PUBLISHED'
         )
         
-        self.applications_url = reverse('application-list')
+        self.applications_url = reverse('v1:application-list')
 
     def test_create_application_success(self):
         """Test tạo đơn ứng tuyển thành công"""
@@ -276,7 +276,7 @@ class ApplicationAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.recruiter)
         
-        url = reverse('application-update-status', args=[application.id])
+        url = reverse('v1:application-update-status', args=[application.id])
         data = {
             'status': 'INTERVIEW',
             'note': 'Scheduled for interview'
@@ -306,7 +306,7 @@ class ApplicationAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.candidate)
         
-        url = reverse('application-update-status', args=[application.id])
+        url = reverse('v1:application-update-status', args=[application.id])
         data = {
             'status': 'ACCEPTED'
         }
@@ -447,7 +447,7 @@ class InterviewScheduleAPITest(APITestCase):
             status='PENDING'
         )
         
-        self.interview_url = reverse('interviewschedule-list')
+        self.interview_url = reverse('v1:interviewschedule-list')
 
     def test_create_interview_success(self):
         """Test recruiter tạo lịch phỏng vấn thành công"""

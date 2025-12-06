@@ -214,7 +214,7 @@ class ConversationAPITest(APITestCase):
             participant2=self.recruiter
         )
         
-        self.conversations_url = reverse('conversation-list')
+        self.conversations_url = reverse('v1:conversation-list')
 
     def test_list_user_conversations(self):
         """Test user chỉ xem được conversations của mình"""
@@ -250,7 +250,7 @@ class ConversationAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.candidate)
         
-        url = reverse('conversation-messages', args=[self.conversation.id])
+        url = reverse('v1:conversation-messages', args=[self.conversation.id])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -260,7 +260,7 @@ class ConversationAPITest(APITestCase):
         """Test user không liên quan không thể xem messages"""
         self.client.force_authenticate(user=self.other_user)
         
-        url = reverse('conversation-messages', args=[self.conversation.id])
+        url = reverse('v1:conversation-messages', args=[self.conversation.id])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -330,7 +330,7 @@ class MessageAPITest(APITestCase):
         """Test gửi message"""
         self.client.force_authenticate(user=self.candidate)
         
-        messages_url = reverse('message-list')
+        messages_url = reverse('v1:message-list')
         data = {
             'conversation': self.conversation.id,
             'text': 'Hello from candidate'
@@ -358,7 +358,7 @@ class MessageAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.recruiter)
         
-        url = reverse('message-detail', args=[message.id])
+        url = reverse('v1:message-detail', args=[message.id])
         data = {'is_read': True}
         
         response = self.client.patch(url, data, format='json')
@@ -378,7 +378,7 @@ class MessageAPITest(APITestCase):
             content_type="application/pdf"
         )
         
-        messages_url = reverse('message-list')
+        messages_url = reverse('v1:message-list')
         data = {
             'conversation': self.conversation.id,
             'text': 'Document attached',
@@ -414,7 +414,7 @@ class MessageAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.candidate)
         
-        url = reverse('conversation-messages', args=[self.conversation.id])
+        url = reverse('v1:conversation-messages', args=[self.conversation.id])
         response = self.client.get(url)
         
         messages = response.data['results']

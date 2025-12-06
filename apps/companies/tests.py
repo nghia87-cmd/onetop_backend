@@ -96,7 +96,7 @@ class CompanyAPITest(APITestCase):
             owner=self.recruiter
         )
         
-        self.companies_url = reverse('company-list')
+        self.companies_url = reverse('v1:company-list')
 
     def test_list_companies_public(self):
         """Test danh sách công ty công khai"""
@@ -145,7 +145,7 @@ class CompanyAPITest(APITestCase):
         """Test recruiter cập nhật công ty của mình"""
         self.client.force_authenticate(user=self.recruiter)
         
-        url = reverse('company-detail', args=[self.company.id])
+        url = reverse('v1:company-detail', args=[self.company.id])
         data = {
             'description': 'Updated description'
         }
@@ -161,7 +161,7 @@ class CompanyAPITest(APITestCase):
         """Test không thể cập nhật công ty của người khác"""
         self.client.force_authenticate(user=self.other_recruiter)
         
-        url = reverse('company-detail', args=[self.company.id])
+        url = reverse('v1:company-detail', args=[self.company.id])
         data = {
             'description': 'Unauthorized update'
         }
@@ -174,7 +174,7 @@ class CompanyAPITest(APITestCase):
         """Test xóa công ty của mình"""
         self.client.force_authenticate(user=self.recruiter)
         
-        url = reverse('company-detail', args=[self.company.id])
+        url = reverse('v1:company-detail', args=[self.company.id])
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
@@ -184,14 +184,14 @@ class CompanyAPITest(APITestCase):
         """Test không thể xóa công ty của người khác"""
         self.client.force_authenticate(user=self.other_recruiter)
         
-        url = reverse('company-detail', args=[self.company.id])
+        url = reverse('v1:company-detail', args=[self.company.id])
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_get_company_detail(self):
         """Test xem chi tiết công ty"""
-        url = reverse('company-detail', args=[self.company.id])
+        url = reverse('v1:company-detail', args=[self.company.id])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)

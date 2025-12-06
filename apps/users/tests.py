@@ -67,7 +67,7 @@ class RegisterAPITest(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.register_url = reverse('register')
+        self.register_url = reverse('v1:register')
 
     def test_register_candidate_success(self):
         """Test đăng ký candidate thành công"""
@@ -223,7 +223,7 @@ class UserProfileAPITest(APITestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.profile_url = reverse('user-profile')
+        self.profile_url = reverse('v1:user-profile')
         
         self.user = User.objects.create_user(
             email='user@test.com',

@@ -69,7 +69,7 @@ def test_can_view_contact_default(recruiter_user):
 @pytest.mark.django_db
 def test_register_candidate_success(api_client):
     """Test đăng ký candidate thành công"""
-    url = reverse('register')
+    url = reverse('v1:register')
     data = {
         'email': 'newcandidate@test.com',
         'password': 'newpass123',
@@ -87,7 +87,7 @@ def test_register_candidate_success(api_client):
 @pytest.mark.django_db
 def test_register_recruiter_success(api_client):
     """Test đăng ký recruiter thành công"""
-    url = reverse('register')
+    url = reverse('v1:register')
     data = {
         'email': 'newrecruiter@test.com',
         'password': 'newpass123',
@@ -103,7 +103,7 @@ def test_register_recruiter_success(api_client):
 @pytest.mark.django_db
 def test_register_duplicate_email(api_client, candidate_user):
     """Test đăng ký với email đã tồn tại"""
-    url = reverse('register')
+    url = reverse('v1:register')
     data = {
         'email': candidate_user.email,
         'password': 'newpass123',
@@ -118,7 +118,7 @@ def test_register_duplicate_email(api_client, candidate_user):
 @pytest.mark.django_db
 def test_register_invalid_email(api_client):
     """Test đăng ký với email không hợp lệ"""
-    url = reverse('register')
+    url = reverse('v1:register')
     data = {
         'email': 'invalidemail',
         'password': 'newpass123',
@@ -133,7 +133,7 @@ def test_register_invalid_email(api_client):
 @pytest.mark.django_db
 def test_register_missing_required_fields(api_client):
     """Test đăng ký thiếu trường bắt buộc"""
-    url = reverse('register')
+    url = reverse('v1:register')
     data = {
         'email': 'test@test.com'
         # Thiếu password và full_name
@@ -150,7 +150,7 @@ def test_register_missing_required_fields(api_client):
 @pytest.mark.django_db
 def test_login_success(api_client, candidate_user):
     """Test login thành công"""
-    url = reverse('login')
+    url = reverse('v1:login')
     data = {
         'email': 'candidate@test.com',
         'password': 'testpass123'
@@ -165,7 +165,7 @@ def test_login_success(api_client, candidate_user):
 @pytest.mark.django_db
 def test_login_wrong_password(api_client, candidate_user):
     """Test login với mật khẩu sai"""
-    url = reverse('login')
+    url = reverse('v1:login')
     data = {
         'email': 'candidate@test.com',
         'password': 'wrongpassword'
@@ -178,7 +178,7 @@ def test_login_wrong_password(api_client, candidate_user):
 @pytest.mark.django_db
 def test_login_nonexistent_user(api_client):
     """Test login với user không tồn tại"""
-    url = reverse('login')
+    url = reverse('v1:login')
     data = {
         'email': 'nonexistent@test.com',
         'password': 'password123'
@@ -191,7 +191,7 @@ def test_login_nonexistent_user(api_client):
 @pytest.mark.django_db
 def test_login_missing_credentials(api_client):
     """Test login thiếu thông tin đăng nhập"""
-    url = reverse('login')
+    url = reverse('v1:login')
     data = {
         'email': 'test@test.com'
         # Thiếu password
@@ -208,7 +208,7 @@ def test_login_missing_credentials(api_client):
 @pytest.mark.django_db
 def test_get_user_profile_authenticated(authenticated_client, candidate_user):
     """Test lấy profile khi đã đăng nhập"""
-    url = reverse('user-profile')
+    url = reverse('v1:user-profile')
     response = authenticated_client.get(url)
     
     assert response.status_code == status.HTTP_200_OK
@@ -219,7 +219,7 @@ def test_get_user_profile_authenticated(authenticated_client, candidate_user):
 @pytest.mark.django_db
 def test_get_user_profile_unauthenticated(api_client):
     """Test lấy profile khi chưa đăng nhập"""
-    url = reverse('user-profile')
+    url = reverse('v1:user-profile')
     response = api_client.get(url)
     
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -228,7 +228,7 @@ def test_get_user_profile_unauthenticated(api_client):
 @pytest.mark.django_db
 def test_update_user_profile(authenticated_client, candidate_user):
     """Test cập nhật profile"""
-    url = reverse('user-profile')
+    url = reverse('v1:user-profile')
     data = {
         'full_name': 'Updated Name',
         'phone': '0123456789',
@@ -246,7 +246,7 @@ def test_update_user_profile(authenticated_client, candidate_user):
 @pytest.mark.django_db
 def test_update_user_profile_invalid_data(authenticated_client):
     """Test cập nhật profile với dữ liệu không hợp lệ"""
-    url = reverse('user-profile')
+    url = reverse('v1:user-profile')
     data = {
         'email': 'invalidemail'  # Email không hợp lệ
     }
@@ -287,7 +287,7 @@ def test_vip_membership_expired(recruiter_user):
 def test_candidate_cannot_post_job(authenticated_client, candidate_user):
     """Test candidate không thể đăng tin tuyển dụng"""
     # Giả sử có endpoint create job
-    # url = reverse('job-list')
+    # url = reverse('v1:job-list')
     # response = authenticated_client.post(url, {...})
     # assert response.status_code == status.HTTP_403_FORBIDDEN
     pass  # Placeholder - implement khi có job endpoint

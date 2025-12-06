@@ -69,7 +69,7 @@ def test_company_unique_name(recruiter_user):
 @pytest.mark.django_db
 def test_list_companies_public(api_client):
     """Test danh sách công ty công khai"""
-    url = reverse('company-list')
+    url = reverse('v1:company-list')
     response = api_client.get(url)
     
     assert response.status_code == status.HTTP_200_OK
@@ -78,7 +78,7 @@ def test_list_companies_public(api_client):
 @pytest.mark.django_db
 def test_create_company_success(authenticated_client, recruiter_user, company):
     """Test recruiter tạo công ty thành công"""
-    url = reverse('company-list')
+    url = reverse('v1:company-list')
     data = {
         'name': 'New Company',
         'description': 'New company description',
@@ -100,7 +100,7 @@ def test_create_company_success(authenticated_client, recruiter_user, company):
 @pytest.mark.django_db
 def test_candidate_cannot_create_company(candidate_client):
     """Test candidate không thể tạo công ty"""
-    url = reverse('company-list')
+    url = reverse('v1:company-list')
     data = {
         'name': 'Candidate Company',
         'description': 'Description',
@@ -116,7 +116,7 @@ def test_candidate_cannot_create_company(candidate_client):
 @pytest.mark.django_db
 def test_update_own_company(authenticated_client, company):
     """Test recruiter cập nhật công ty của mình"""
-    url = reverse('company-detail', args=[company.id])
+    url = reverse('v1:company-detail', args=[company.id])
     data = {
         'description': 'Updated description'
     }
@@ -146,7 +146,7 @@ def test_cannot_update_other_company(api_client, company):
     
     api_client.force_authenticate(user=other_recruiter)
     
-    url = reverse('company-detail', args=[company.id])
+    url = reverse('v1:company-detail', args=[company.id])
     data = {
         'description': 'Unauthorized update'
     }
@@ -159,7 +159,7 @@ def test_cannot_update_other_company(api_client, company):
 @pytest.mark.django_db
 def test_delete_own_company(authenticated_client, company):
     """Test xóa công ty của mình"""
-    url = reverse('company-detail', args=[company.id])
+    url = reverse('v1:company-detail', args=[company.id])
     response = authenticated_client.delete(url)
     
     assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -169,7 +169,7 @@ def test_delete_own_company(authenticated_client, company):
 @pytest.mark.django_db
 def test_get_company_detail(api_client, company):
     """Test xem chi tiết công ty"""
-    url = reverse('company-detail', args=[company.id])
+    url = reverse('v1:company-detail', args=[company.id])
     response = api_client.get(url)
     
     assert response.status_code == status.HTTP_200_OK

@@ -306,7 +306,7 @@ class ResumeAPITest(APITestCase):
             phone='0123456789'
         )
         
-        self.resumes_url = reverse('resume-list')
+        self.resumes_url = reverse('v1:resume-list')
 
     def test_list_own_resumes(self):
         """Test user chỉ xem được CV của mình"""
@@ -347,7 +347,7 @@ class ResumeAPITest(APITestCase):
         """Test cập nhật CV"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('resume-detail', args=[self.resume.id])
+        url = reverse('v1:resume-detail', args=[self.resume.id])
         data = {
             'summary': 'Updated summary'
         }
@@ -363,7 +363,7 @@ class ResumeAPITest(APITestCase):
         """Test xóa CV"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('resume-detail', args=[self.resume.id])
+        url = reverse('v1:resume-detail', args=[self.resume.id])
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
@@ -373,7 +373,7 @@ class ResumeAPITest(APITestCase):
         """Test không thể cập nhật CV của người khác"""
         self.client.force_authenticate(user=self.other_user)
         
-        url = reverse('resume-detail', args=[self.resume.id])
+        url = reverse('v1:resume-detail', args=[self.resume.id])
         data = {
             'summary': 'Hacked summary'
         }
@@ -394,7 +394,7 @@ class ResumeAPITest(APITestCase):
             mock_html_class.return_value = mock_html_instance
             mock_html_instance.write_pdf.return_value = b'%PDF-1.4\nFake PDF content'
             
-            url = reverse('resume-generate-pdf', args=[self.resume.id])
+            url = reverse('v1:resume-generate-pdf', args=[self.resume.id])
             response = self.client.post(url)
             
             # Expect 200 hoặc 202 (processing)
@@ -555,7 +555,7 @@ class ResumeComponentsAPITest(APITestCase):
         """Test thêm kinh nghiệm làm việc"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('workexperience-list')
+        url = reverse('v1:workexperience-list')
         data = {
             'resume': self.resume.id,
             'company_name': 'Tech Company',
@@ -574,7 +574,7 @@ class ResumeComponentsAPITest(APITestCase):
         """Test thêm học vấn"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('education-list')
+        url = reverse('v1:education-list')
         data = {
             'resume': self.resume.id,
             'school_name': 'University',
@@ -593,7 +593,7 @@ class ResumeComponentsAPITest(APITestCase):
         """Test thêm kỹ năng"""
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('skill-list')
+        url = reverse('v1:skill-list')
         data = {
             'resume': self.resume.id,
             'name': 'Python',
@@ -616,7 +616,7 @@ class ResumeComponentsAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('workexperience-detail', args=[experience.id])
+        url = reverse('v1:workexperience-detail', args=[experience.id])
         data = {
             'position': 'Senior Dev'
         }
@@ -638,7 +638,7 @@ class ResumeComponentsAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('skill-detail', args=[skill.id])
+        url = reverse('v1:skill-detail', args=[skill.id])
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)

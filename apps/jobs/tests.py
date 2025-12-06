@@ -155,13 +155,17 @@ class JobAPITest(APITestCase):
             status='PUBLISHED'
         )
         
-        self.jobs_url = reverse('job-list')
+        # Router registers as 'list-list' because path is r'list'
+        # Should be job-list if we change router.register(r'', JobViewSet)
+        self.jobs_url = reverse('v1:job-list')
 
     def test_list_jobs_public(self):
         """Test danh sách job công khai"""
         response = self.client.get(self.jobs_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Response is paginated dict with 'results' key
+        self.assertIn('results', response.data)
         self.assertTrue(len(response.data['results']) > 0)
 
     def test_list_jobs_filter_by_location(self):
@@ -188,19 +192,25 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'New Job',
-            'company': self.company.id,
+            'company': self.company.pkid,  # Use pkid (primary key), not id (UUID)
             'location': 'TP.HCM',
             'job_type': 'FULL_TIME',
             'salary_min': 1500,
             'salary_max': 2500,
+            'is_negotiable': False,  # Required field
             'description': 'New job description',
             'requirements': 'Python, FastAPI',
             'benefits': 'Benefits',
-            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat(),
-            'status': 'PUBLISHED'
+            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat()
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
+        
+        # DEBUG: Print if failed
+        if response.status_code != status.HTTP_201_CREATED:
+            print(f"\n=== DEBUG test_create_job_success_with_credits ===")
+            print(f"Status: {response.status_code}")
+            print(f"Data: {response.data}")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
@@ -214,17 +224,21 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'VIP Job',
-            'company': self.vip_company.id,
+            'company': self.vip_company.pkid,
             'location': 'TP.HCM',
             'job_type': 'FULL_TIME',
+            'salary_min': 2000,
+            'salary_max': 3000,
+            'is_negotiable': False,
             'description': 'VIP job description',
             'requirements': 'Test',
             'benefits': 'Test',
-            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat(),
-            'status': 'PUBLISHED'
+            'requirements': 'VIP requirements',
+            'benefits': 'VIP benefits',
+            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat()
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
@@ -241,17 +255,19 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'No Credit Job',
-            'company': self.company.id,
+            'company': self.company.pkid,
             'location': 'Hà Nội',
             'job_type': 'FULL_TIME',
+            'salary_min': 1000,
+            'salary_max': 1500,
+            'is_negotiable': False,
             'description': 'Test',
             'requirements': 'Test',
             'benefits': 'Test',
-            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat(),
-            'status': 'PUBLISHED'
+            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat()
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -264,17 +280,19 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'Expired Job',
-            'company': self.company.id,
+            'company': self.company.pkid,
             'location': 'Hà Nội',
             'job_type': 'FULL_TIME',
+            'salary_min': 1000,
+            'salary_max': 1500,
+            'is_negotiable': False,
             'description': 'Test',
             'requirements': 'Test',
             'benefits': 'Test',
-            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat(),
-            'status': 'PUBLISHED'
+            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat()
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -294,17 +312,19 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'Unauthorized Job',
-            'company': self.company.id,  # Công ty của recruiter khác
+            'company': self.company.pkid,  # Công ty của recruiter khác
             'location': 'Hà Nội',
             'job_type': 'FULL_TIME',
+            'salary_min': 1000,
+            'salary_max': 1500,
+            'is_negotiable': False,
             'description': 'Test',
             'requirements': 'Test',
             'benefits': 'Test',
-            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat(),
-            'status': 'PUBLISHED'
+            'deadline': (timezone.now().date() + timedelta(days=30)).isoformat()
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -314,7 +334,7 @@ class JobAPITest(APITestCase):
         
         data = {
             'title': 'Candidate Job',
-            'company': self.company.id,
+            'company': self.company.pkid,
             'location': 'Hà Nội',
             'job_type': 'FULL_TIME',
             'description': 'Test',
@@ -324,7 +344,7 @@ class JobAPITest(APITestCase):
             'status': 'PUBLISHED'
         }
         
-        response = self.client.post(self.jobs_url, data, format='json')
+        response = self.client.post(self.jobs_url, data)
         
         # Candidate không có company nên sẽ thất bại
         self.assertNotEqual(response.status_code, status.HTTP_201_CREATED)
@@ -371,7 +391,7 @@ class SavedJobAPITest(APITestCase):
             status='PUBLISHED'
         )
         
-        self.saved_jobs_url = reverse('savedjob-list')
+        self.saved_jobs_url = reverse('v1:saved-jobs-list')
 
     def test_save_job_success(self):
         """Test lưu job thành công"""
@@ -381,7 +401,7 @@ class SavedJobAPITest(APITestCase):
             'job': self.job.id
         }
         
-        response = self.client.post(self.saved_jobs_url, data, format='json')
+        response = self.client.post(self.saved_jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(SavedJob.objects.filter(user=self.candidate, job=self.job).exists())
@@ -396,7 +416,7 @@ class SavedJobAPITest(APITestCase):
             'job': self.job.id
         }
         
-        response = self.client.post(self.saved_jobs_url, data, format='json')
+        response = self.client.post(self.saved_jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -409,7 +429,7 @@ class SavedJobAPITest(APITestCase):
         response = self.client.get(self.saved_jobs_url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data), 1)
 
     def test_delete_saved_job(self):
         """Test xóa job đã lưu"""
@@ -417,7 +437,7 @@ class SavedJobAPITest(APITestCase):
         
         self.client.force_authenticate(user=self.candidate)
         
-        url = reverse('savedjob-detail', args=[saved_job.id])
+        url = reverse('v1:saved-jobs-detail', args=[saved_job.id])
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
@@ -429,6 +449,6 @@ class SavedJobAPITest(APITestCase):
             'job': self.job.id
         }
         
-        response = self.client.post(self.saved_jobs_url, data, format='json')
+        response = self.client.post(self.saved_jobs_url, data)
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

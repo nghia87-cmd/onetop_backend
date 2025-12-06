@@ -1,11 +1,11 @@
 # apps/jobs/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import JobViewSet, SavedJobViewSet # <--- Import thêm
+from .views import JobViewSet, SavedJobViewSet
 
 router = DefaultRouter()
-router.register(r'list', JobViewSet) # Đổi path cũ r'' thành r'list' cho rõ nghĩa hoặc giữ nguyên tùy bạn
-router.register(r'saved', SavedJobViewSet, basename='saved-jobs') # <--- Thêm dòng này
+router.register(r'', JobViewSet, basename='job')  # Fixed: Use empty string for cleaner URLs
+router.register(r'saved', SavedJobViewSet, basename='saved-jobs')
 
 urlpatterns = [
     path('', include(router.urls)),
