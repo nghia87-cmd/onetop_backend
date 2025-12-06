@@ -22,3 +22,37 @@ def check_expired_memberships():
         count += 1
     
     return f"Đã quét xong: {count} tài khoản hết hạn đã bị reset."
+
+# CRITICAL FIX #5: Async email cho UX tốt hơn (không block API đăng ký)
+@shared_task
+def send_welcome_email_task(user_id, user_email, user_full_name):
+    """
+    Gửi email chào mừng cho RECRUITER đăng ký (chạy background)
+    Tách khỏi API để không làm chậm response time
+    """
+    from django.core.mail import send_mail
+    from django.conf import settings
+    from django.utils.translation import gettext as _
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        send_mail(
+            subject=str(_('Account Registration - Pending Approval')),
+            message=_(
+                "Hello {name},\n\n"
+                "Thank you for registering as a Recruiter on OneTop.\n\n"
+                "Your account is currently pending approval by our admin team. "
+                "You will receive another email once your account has been approved and you can start posting jobs.\n\n"
+                "This process usually takes 1-2 business days.\n\n"
+                "Best regards,\nOneTop Team"
+            ).format(name=user_full_name),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user_email],
+            fail_silently=False,  # Raise exception để Celery retry
+        )
+        logger.info(f"Welcome email sent to user {user_id} ({user_email})")
+    except Exception as e:
+        logger.error(f"Failed to send welcome email to {user_email}: {e}")
+        raise  # Celery sẽ retry theo cấu hình

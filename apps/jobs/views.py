@@ -60,8 +60,8 @@ class JobViewSet(viewsets.ModelViewSet):
                 fields=fields_with_boost,
                 fuzziness=fuzziness)
 
-        # Filter: Chỉ tìm Job đang PUBLISHED
-        search = JobDocument.search().query(q).filter('term', status='PUBLISHED')
+        # CRITICAL FIX #2: Filter both PUBLISHED and NOT soft-deleted at search time
+        search = JobDocument.search().query(q).filter('term', status='PUBLISHED').filter('term', is_deleted=False)
 
         # Convert kết quả ES về Django QuerySet (giữ nguyên thứ tự Rank)
         qs = search.to_queryset()

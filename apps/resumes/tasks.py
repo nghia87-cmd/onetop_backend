@@ -19,7 +19,11 @@ def generate_resume_pdf_async(self, resume_id):
     Task bất đồng bộ để tạo file PDF CV bằng WeasyPrint (tốn CPU).
     """
     try:
-        resume = Resume.objects.get(id=resume_id)
+        # CRITICAL FIX #3: Prevent N+1 queries trong PDF generation
+        # Template truy cập resume.educations, resume.experiences, resume.skills
+        resume = Resume.objects.prefetch_related(
+            'experiences', 'educations', 'skills'
+        ).select_related('user').get(id=resume_id)
         
         # 1. Render HTML
         context = {'resume': resume, 'user': resume.user}

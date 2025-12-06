@@ -44,6 +44,11 @@ class Transaction(TimeStampedModel):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     transaction_code = models.CharField(max_length=50, unique=True)
+    
+    # CRITICAL FIX #4: DB-based Idempotency (not just cache)
+    # Client gửi Idempotency-Key trong header, lưu vào DB để prevent double charge
+    # Cache có thể mất (Redis restart), nhưng DB là source of truth
+    idempotency_key = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)
 
     def __str__(self):
         return f"{self.user.email} - {self.amount:,.0f} - {self.status}"

@@ -10,11 +10,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Soft Delete fields đã có trong model (is_deleted, deleted_at)
-        # từ SoftDeleteMixin, nên không cần thêm field
-        
-        # Chỉ cần tạo index cho is_deleted nếu chưa có
-        migrations.AlterField(
+        # Add Soft Delete fields from SoftDeleteMixin
+        migrations.AddField(
             model_name='job',
             name='is_deleted',
             field=models.BooleanField(
@@ -23,7 +20,7 @@ class Migration(migrations.Migration):
                 help_text='Whether this object has been soft-deleted'
             ),
         ),
-        migrations.AlterField(
+        migrations.AddField(
             model_name='job',
             name='deleted_at',
             field=models.DateTimeField(

@@ -40,27 +40,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             is_active=is_active # <-- Tham số quan trọng
         )
         
-        # CRITICAL FIX: Send email notification for RECRUITER registration (UX improvement)
+        # CRITICAL FIX #5: Async email để không làm chậm API (1-3 giây SMTP connection)
+        # Chuyển sang Celery task thay vì send_mail đồng bộ
         if user_type == 'RECRUITER' and not is_active:
-            try:
-                send_mail(
-                    subject=str(_('Account Registration - Pending Approval')),
-                    message=_(
-                        "Hello {name},\n\n"
-                        "Thank you for registering as a Recruiter on OneTop.\n\n"
-                        "Your account is currently pending approval by our admin team. "
-                        "You will receive another email once your account has been approved and you can start posting jobs.\n\n"
-                        "This process usually takes 1-2 business days.\n\n"
-                        "Best regards,\nOneTop Team"
-                    ).format(name=user.full_name),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    fail_silently=True,
-                )
-            except Exception as e:
-                # Don't fail registration if email fails
-                import logging
-                logging.getLogger(__name__).error(f"Failed to send registration email to {user.email}: {e}")
+            from apps.users.tasks import send_welcome_email_task
+            # Delay task để không block response
+            send_welcome_email_task.delay(
+                user_id=user.id,
+                user_email=user.email,
+                user_full_name=user.full_name
+            )
         
         return user
 

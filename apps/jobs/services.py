@@ -76,12 +76,14 @@ class JobService:
             
             credit_cost = getattr(settings, 'JOB_POSTING_CREDIT_COST', 1)
             
-            # Atomic decrement để tránh race condition
+            # CRITICAL FIX: Atomic decrement với version increment cho Optimistic Locking
+            # Phải tăng version để PaymentService detect được thay đổi credits
             updated = User.objects.filter(
                 pk=user.pk,
                 job_posting_credits__gte=credit_cost  # Đảm bảo đủ credits
             ).update(
-                job_posting_credits=F('job_posting_credits') - credit_cost
+                job_posting_credits=F('job_posting_credits') - credit_cost,
+                version=F('version') + 1  # REQUIRED: Increment version for optimistic locking
             )
             
             if not updated:

@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from ipware import get_client_ip as get_client_ip_safe
+from ipware import get_client_ip
 from django.utils.translation import gettext_lazy as _
 from django.core.cache import cache
 import hashlib
@@ -28,27 +28,46 @@ class TransactionViewSet(viewsets.ModelViewSet):
         """Tạo giao dịch thanh toán mới với Idempotency-Key support"""
         package_id = request.data.get('package_id')
         
-        # CRITICAL FIX: Idempotency-Key to prevent duplicate payments
+        # CRITICAL FIX #4: DB-based Idempotency (with cache optimization)
         # Client should send unique key per payment attempt (e.g., UUID)
         idempotency_key = request.headers.get('Idempotency-Key')
         
         if idempotency_key:
-            # Generate cache key from user ID + idempotency key
+            # 1. Check cache first (fast path)
             cache_key = f"payment_idempotency:{request.user.id}:{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
-            
-            # Check if this request was already processed (within 24 hours)
             cached_response = cache.get(cache_key)
             if cached_response:
                 return Response(cached_response, status=status.HTTP_200_OK)
+            
+            # 2. Check DB (source of truth - cache có thể mất do Redis restart)
+            existing_transaction = Transaction.objects.filter(
+                user=request.user,
+                idempotency_key=idempotency_key
+            ).first()
+            
+            if existing_transaction:
+                # Return existing transaction (idempotent response)
+                response_data = {
+                    "payment_url": VNPayService.generate_payment_url(
+                        package=existing_transaction.package,
+                        trans_code=existing_transaction.transaction_code,
+                        client_ip=get_client_ip(request)[0] or '127.0.0.1'
+                    ),
+                    "transaction_code": existing_transaction.transaction_code
+                }
+                # Re-cache for future requests
+                cache.set(cache_key, response_data, timeout=60 * 60 * 24)
+                return Response(response_data, status=status.HTTP_200_OK)
         
         try:
-            # Lấy IP an toàn với ipware (chống spoofing)
-            client_ip, is_routable = get_client_ip_safe(request)
+            # Lấy IP với django-ipware (chống spoofing)
+            client_ip, is_routable = get_client_ip(request)
             
-            # Sử dụng Service Layer để tạo payment
+            # Sử dụng Service Layer để tạo payment (với idempotency_key)
             result = PaymentService.create_payment_transaction(
                 user=request.user,
-                package_id=package_id
+                package_id=package_id,
+                idempotency_key=idempotency_key  # Pass to service
             )
             
             # Regenerate payment URL với IP thực của client

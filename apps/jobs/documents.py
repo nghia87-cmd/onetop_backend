@@ -31,6 +31,10 @@ class JobDocument(Document):
     salary_max = fields.IntegerField()
     created_at = fields.DateField()
     views_count = fields.IntegerField()
+    
+    # CRITICAL FIX: Index is_deleted field to prevent ghost records
+    # Lọc ở search thay vì queryset để ES có thể xóa record khi soft delete
+    is_deleted = fields.BooleanField()
 
     class Index:
         # Tên index trong Elasticsearch
@@ -50,12 +54,12 @@ class JobDocument(Document):
             'slug',
         ]
         
-        # CRITICAL FIX: Exclude soft-deleted jobs to prevent ghost records in search results
         queryset_pagination = 10000
         
-        def get_queryset(self):
-            """Override to exclude soft-deleted jobs from Elasticsearch index"""
-            return super().get_queryset().filter(is_deleted=False)
+        # CRITICAL FIX #2: Index ALL jobs (including soft-deleted) để ES có thể update/delete
+        # Filter is_deleted at SEARCH time instead of INDEX time
+        # Khi job.delete() được gọi, signal post_save sẽ update is_deleted=True trong ES
+        # Nếu filter ở đây, ES không tìm thấy job để update -> ghost record
         
         # Tự động cập nhật ES khi model thay đổi
         # ignore_signals = True # Bật lên nếu muốn update thủ công bằng Cronjob để tối ưu write DB

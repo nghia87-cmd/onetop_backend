@@ -20,13 +20,14 @@ class PaymentService:
     """Service xử lý logic thanh toán và membership"""
     
     @staticmethod
-    def create_payment_transaction(user, package_id):
+    def create_payment_transaction(user, package_id, idempotency_key=None):
         """
         Tạo transaction PENDING và URL thanh toán VNPay
         
         Args:
             user: User object
             package_id: ID của ServicePackage
+            idempotency_key: Optional idempotency key để prevent duplicate transactions
             
         Returns:
             dict: {
@@ -44,13 +45,14 @@ class PaymentService:
         order_id = int(timezone.now().timestamp())
         trans_code = str(order_id)
         
-        # Tạo transaction PENDING
+        # CRITICAL FIX #4: Tạo transaction với idempotency_key (nếu có)
         transaction = Transaction.objects.create(
             user=user,
             package=package,
             amount=package.price,
             transaction_code=trans_code,
-            status='PENDING'
+            status='PENDING',
+            idempotency_key=idempotency_key  # DB-based duplicate prevention
         )
         
         logger.info(f"Created transaction {trans_code} for user {user.id}, package {package.name}")
