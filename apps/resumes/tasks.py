@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.utils import timezone # Cần thêm import này nếu chưa có
+from django.utils.translation import gettext as _  # Use gettext (not lazy) for runtime
 
 from weasyprint import HTML 
 from apps.resumes.models import Resume
@@ -44,8 +45,11 @@ def generate_resume_pdf_async(self, resume_id):
         if resume.user.email:
             try:
                 send_mail(
-                    subject="CV của bạn đã sẵn sàng để tải xuống",
-                    message=f"CV của bạn ({resume.title}) đã được tạo thành công. Tải xuống tại: {download_url}",
+                    subject=str(_('Your CV is ready for download')),
+                    message=_("Your CV ({title}) has been successfully created. Download at: {url}").format(
+                        title=resume.title,
+                        url=download_url
+                    ),
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[resume.user.email],
                     fail_silently=True, # Không raise lỗi nếu gửi mail thất bại

@@ -29,10 +29,16 @@ services:
       - POSTGRES_DB=onetop_db
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+    # SECURITY: Không expose port ra host (chỉ cho internal network)
+    # ports:
+    #   - "5432:5432"  # Bỏ dòng này để tránh expose DB ra internet
 
   # 3. Redis (Cache & WebSocket Message Broker)
   redis:
     image: redis:7-alpine
+    # SECURITY: Không expose port ra host (chỉ cho internal network)
+    # ports:
+    #   - "6379:6379"  # Bỏ để tránh truy cập trực tiếp từ bên ngoài
 
   # 4. Celery Worker (Xử lý tác vụ nặng & Email)
   celery_worker:
@@ -75,8 +81,9 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false # Tắt bảo mật user/pass cho môi trường dev
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Giới hạn RAM để không bị crash
+    # SECURITY: Chỉ expose trong môi trường DEV, PRODUCTION nên bỏ
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"  # Chỉ bind vào localhost, không cho external access
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 

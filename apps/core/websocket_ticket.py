@@ -1,18 +1,19 @@
 """
 WebSocket Ticket Service
 Tạo one-time ticket cho WebSocket authentication
-Ticket có thời gian sống ngắn (10 giây) để tránh lộ token
+Ticket có thời gian sống ngắn để tránh lộ token
 """
 import secrets
 import time
 from django.core.cache import cache
+from django.conf import settings
 
 
 class WebSocketTicketService:
     """Service quản lý one-time tickets cho WebSocket"""
     
     TICKET_PREFIX = 'ws_ticket:'
-    TICKET_EXPIRY = 10  # 10 seconds
+    TICKET_EXPIRY = settings.WEBSOCKET_TICKET_EXPIRY  # Lấy từ settings thay vì hardcode
     
     @classmethod
     def generate_ticket(cls, user_id: int) -> str:

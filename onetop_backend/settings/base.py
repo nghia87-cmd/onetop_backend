@@ -1,6 +1,6 @@
 """
-Django settings for backend project.
-Full configured for: REST Framework, Channels (Realtime), Celery, JWT, Swagger.
+Base Django Settings
+Cấu hình chung cho tất cả môi trường (dev, prod, test)
 """
 
 from pathlib import Path
@@ -10,8 +10,8 @@ from datetime import timedelta
 from celery.schedules import crontab
 
 # --- 1. SETUP MÔI TRƯỜNG & ĐƯỜNG DẪN ---
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Build paths: BASE_DIR là onetop_backend/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Khởi tạo Environ
 env = environ.Env(
@@ -25,8 +25,8 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env('DEBUG')
+# DEBUG mặc định = False (sẽ override trong dev.py)
+DEBUG = False
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
@@ -56,7 +56,6 @@ INSTALLED_APPS = [
     'django_cleanup.apps.CleanupConfig', # Tự động xóa file ảnh khi xóa model
 
     # D. Local Apps (Đặt trong thư mục apps/)
-    # Lưu ý: Trong file apps/<tên>/apps.py, name phải là 'apps.<tên>'
     'apps.core',           
     'apps.users',
     'apps.companies',
@@ -115,7 +114,6 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# Trỏ chính xác vào app users nằm trong thư mục apps
 AUTH_USER_MODEL = 'users.User' 
 
 # --- 6. LOCALIZATION ---
@@ -135,39 +133,30 @@ LOCALE_PATHS = [
     BASE_DIR / 'locale',
 ]
 
-
-# --- 7. STATIC & MEDIA (DJANGO 4.2+ STYLE) ---
-STATIC_URL = 'static/'
+# --- 7. STATIC & MEDIA FILES ---
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Cấu hình Storages mới (Thay thế STATICFILES_STORAGE cũ)
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
-
-
 # --- 8. REST FRAMEWORK ---
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
+    'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    'DEFAULT_PERMISSION_CLASSES': (
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-    ),
+    ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20, # Mặc định phân trang
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
 }
 
-# --- 9. JWT CONFIG ---
+# --- 9. JWT (SIMPLE JWT) ---
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
@@ -182,32 +171,39 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API documentation for OneTop recruitment platform',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'COMPONENT_SPLIT_REQUEST': True, # Tách request/response rõ ràng
+    'COMPONENT_SPLIT_REQUEST': True,
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,
-        'persistAuthorization': True, # Giữ trạng thái login khi reload
+        'persistAuthorization': True,
         'displayOperationId': True,
     },
 }
 
-# --- 11. CORS (FRONTEND CONNECTION) ---
+# --- 11. CORS ---
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=True)
+
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
-    "http://localhost:3000", 
-    "http://localhost:5173", 
-    "http://127.0.0.1:3000"
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
 ])
-CORS_ALLOW_CREDENTIALS = True
 
 # --- 12. EMAIL ---
 EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = env('EMAIL_HOST', default='')
+EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='OneTop Recruitment <noreply@onetop.com>')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@onetop.vn')
 
-# --- 13. REALTIME & ASYNC (REDIS) ---
+# --- 13. VNPAY CONFIGURATION ---
+VNPAY_TMN_CODE = env('VNPAY_TMN_CODE', default='')
+VNPAY_HASH_SECRET = env('VNPAY_HASH_SECRET', default='')
+VNPAY_URL = env('VNPAY_URL', default='https://sandbox.vnpayment.vn/paymentv2/vpcpay.html')
+VNPAY_RETURN_URL = env('VNPAY_RETURN_URL', default='http://localhost:8000/api/v1/payments/vnpay/return/')
+
+# --- 14. REDIS, CELERY, CHANNELS ---
 # Chung 1 biến REDIS_URL cho cả Celery và Channels để dễ quản lý
 REDIS_URL = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
 
@@ -231,46 +227,31 @@ CELERY_TIMEZONE = TIME_ZONE
 # Default Primary Key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- 14. OTHER SETTINGS CAN BE ADDED BELOW ---
-
-# --- CELERY BEAT SCHEDULE (LẬP LỊCH TASK TỰ ĐỘNG) ---
-
+# --- 15. CELERY BEAT SCHEDULE ---
 CELERY_BEAT_SCHEDULE = {
     'check-expired-memberships-every-day': {
         'task': 'apps.users.tasks.check_expired_memberships',
         'schedule': crontab(hour=0, minute=0),
     },
-    # --- THÊM TASK MỚI ---
     'send-daily-job-alerts': {
         'task': 'apps.jobs.tasks.send_daily_job_alerts',
-        'schedule': crontab(hour=8, minute=0), # 8 giờ sáng hàng ngày
-        # 'schedule': 60.0, # (Bật dòng này nếu muốn test ngay mỗi phút)
+        'schedule': crontab(hour=8, minute=0),
     },
-
     'check-upcoming-interviews-every-5-minutes': {
         'task': 'apps.applications.tasks.check_upcoming_interviews',
         'schedule': crontab(minute='*/5'),
     },
 }
-# --- ELASTICSEARCH CONFIGURATION ---
+
+# --- 16. ELASTICSEARCH CONFIGURATION ---
 ELASTICSEARCH_DSL = {
     'default': {
         'hosts': 'http://elasticsearch:9200'
     },
 }
 
-# --- WEBSOCKET TICKET CONFIGURATION ---
-# Thời gian sống của ticket WebSocket (giây)
+# --- 17. WEBSOCKET TICKET CONFIGURATION ---
 WEBSOCKET_TICKET_EXPIRY = env.int('WEBSOCKET_TICKET_EXPIRY', default=10)
 
-# --- FRONTEND URL (REQUIRED IN PRODUCTION) ---
-# URL frontend để redirect sau thanh toán
-FRONTEND_URL = env('FRONTEND_URL')
-if not FRONTEND_URL and not DEBUG:
-    raise ValueError("FRONTEND_URL must be set in production environment")
-
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_BROWSER_XSS_FILTER = True
+# --- 18. FRONTEND URL (REQUIRED IN PRODUCTION) ---
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')

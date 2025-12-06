@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
+from django.utils.translation import gettext_lazy as _
 from .models import Application, InterviewSchedule
 from apps.jobs.serializers import JobSerializer
 from apps.users.serializers import UserSerializer
@@ -29,6 +30,6 @@ class ApplicationSerializer(serializers.ModelSerializer):
             UniqueTogetherValidator(
                 queryset=Application.objects.all(),
                 fields=['job', 'candidate'],
-                message='Bạn đã ứng tuyển vào công việc này rồi.'
+                message=_('You have already applied for this job.')
             )
         ]

@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 # Import Q từ elasticsearch_dsl và đổi tên để tránh nhầm với Django Q
 from elasticsearch_dsl import Q as ES_Q
 
@@ -77,12 +78,12 @@ class JobViewSet(viewsets.ModelViewSet):
         if user.user_type == 'RECRUITER':
             # Check hạn sử dụng
             if not user.membership_expires_at or user.membership_expires_at < timezone.now():
-                 raise PermissionDenied("Gói dịch vụ đã hết hạn. Vui lòng gia hạn.")
+                 raise PermissionDenied(_("Your service package has expired. Please renew."))
             
             # Check quyền đăng tin (VIP thì miễn phí, thường thì trừ credit)
             if not user.has_unlimited_posting:
                 if user.job_posting_credits <= 0:
-                    raise PermissionDenied("Bạn đã hết lượt đăng tin. Vui lòng mua thêm gói.")
+                    raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
                 
                 user.job_posting_credits -= 1
                 user.save()

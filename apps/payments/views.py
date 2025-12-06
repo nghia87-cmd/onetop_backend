@@ -2,17 +2,12 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.conf import settings
-from django.utils import timezone
-from django.db import transaction as db_transaction
 from ipware import get_client_ip as get_client_ip_safe
-import datetime
-import uuid
-from datetime import timedelta 
+from django.utils.translation import gettext_lazy as _
 
 from .models import ServicePackage, Transaction
 from .serializers import ServicePackageSerializer, TransactionSerializer
-from .vnpay import vnpay
+from .services import PaymentService, VNPayService
 
 class ServicePackageViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ServicePackage.objects.all()
@@ -28,115 +23,66 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def create_payment(self, request):
+        """Tạo giao dịch thanh toán mới"""
         package_id = request.data.get('package_id')
+        
         try:
-            package = ServicePackage.objects.get(id=package_id)
+            # Lấy IP an toàn với ipware (chống spoofing)
+            client_ip, is_routable = get_client_ip_safe(request)
+            
+            # Sử dụng Service Layer để tạo payment
+            result = PaymentService.create_payment_transaction(
+                user=request.user,
+                package_id=package_id
+            )
+            
+            # Regenerate payment URL với IP thực của client
+            result['payment_url'] = VNPayService.generate_payment_url(
+                package=result['transaction'].package,
+                trans_code=result['transaction_code'],
+                client_ip=client_ip or '127.0.0.1'
+            )
+            
+            return Response({
+                "payment_url": result['payment_url'],
+                "transaction_code": result['transaction_code']
+            })
+            
         except ServicePackage.DoesNotExist:
-            return Response({"error": "Gói không tồn tại"}, status=status.HTTP_404_NOT_FOUND)
-
-        order_id = int(timezone.now().timestamp())
-        trans_code = str(order_id)
-
-        # Tạo giao dịch PENDING
-        transaction = Transaction.objects.create(
-            user=request.user,
-            package=package,
-            amount=package.price,
-            transaction_code=trans_code,
-            status='PENDING'
-        )
-
-        # Tạo URL thanh toán VNPay
-        vnp = vnpay()
-        vnp.requestData['vnp_Version'] = '2.1.0'
-        vnp.requestData['vnp_Command'] = 'pay'
-        vnp.requestData['vnp_TmnCode'] = settings.VNPAY_TMN_CODE
-        vnp.requestData['vnp_Amount'] = int(package.price * 100)
-        vnp.requestData['vnp_CurrCode'] = 'VND'
-        vnp.requestData['vnp_TxnRef'] = trans_code
-        vnp.requestData['vnp_OrderInfo'] = f"Thanh toan don hang {trans_code}"
-        vnp.requestData['vnp_OrderType'] = 'billpayment'
-        vnp.requestData['vnp_Locale'] = 'vn'
-        
-        # Lấy IP an toàn với ipware (chống spoofing)
-        client_ip, is_routable = get_client_ip_safe(request)
-        vnp.requestData['vnp_IpAddr'] = client_ip or '127.0.0.1'
-        
-        vnp.requestData['vnp_CreateDate'] = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-        vnp.requestData['vnp_ReturnUrl'] = settings.VNPAY_RETURN_URL
-        
-        vnpay_payment_url = vnp.get_payment_url(settings.VNPAY_URL, settings.VNPAY_HASH_SECRET)
-
-        return Response({
-            "payment_url": vnpay_payment_url,
-            "transaction_code": trans_code
-        })
+            return Response(
+                {"error": _("Package does not exist")}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class VNPayBaseView(APIView):
-    """Class cha chứa logic xử lý chung cho cả ReturnURL và IPN"""
+    """Base class xử lý callback từ VNPay (ReturnURL và IPN)"""
     
     def process_payment(self, request):
-        inputData = request.GET.dict()
-        if not inputData:
-            return None, "No data", False
-
-        vnp = vnpay()
-        vnp.responseData = inputData
-        order_id = inputData.get('vnp_TxnRef')
-        amount = int(inputData.get('vnp_Amount')) / 100
-        vnp_ResponseCode = inputData.get('vnp_ResponseCode')
-
-        if vnp.validate_response(settings.VNPAY_HASH_SECRET):
-            # BẮT ĐẦU TRANSACTION DATABASE (Khóa bản ghi để tránh xử lý trùng lặp)
-            with db_transaction.atomic():
-                try:
-                    trans = Transaction.objects.select_for_update().get(transaction_code=order_id)
-                except Transaction.DoesNotExist:
-                    return None, "Order not found", False
-
-                if trans.amount != amount:
-                    return None, "Invalid amount", False
-
-                if trans.status != 'PENDING':
-                    return trans, "Order already confirmed", True
-
-                if vnp_ResponseCode == "00":
-                    # --- THANH TOÁN THÀNH CÔNG ---
-                    trans.status = 'SUCCESS'
-                    trans.save()
-                    
-                    user = trans.user
-                    package = trans.package
-                    
-                    if package:
-                        # 1. Cộng ngày hết hạn (Chung cho cả Credit và Subscription)
-                        now = timezone.now()
-                        if user.membership_expires_at and user.membership_expires_at > now:
-                            user.membership_expires_at += timedelta(days=package.duration_days)
-                        else:
-                            user.membership_expires_at = now + timedelta(days=package.duration_days)
-                        
-                        # 2. Kích hoạt quyền lợi dựa trên loại gói
-                        if package.package_type == 'SUBSCRIPTION':
-                            # Gói thuê bao: Bật cờ VIP
-                            if package.allow_unlimited_posting:
-                                user.has_unlimited_posting = True
-                            if package.allow_view_contact:
-                                user.can_view_contact = True
-                        else:
-                            # Gói Credit: Cộng số lượt đăng tin
-                            user.job_posting_credits += package.job_posting_limit
-                        
-                        user.save()
-                    
-                    return trans, "Confirm Success", True
-                else:
-                    # --- THANH TOÁN THẤT BẠI ---
-                    trans.status = 'FAILED'
-                    trans.save()
-                    return trans, "Payment Failed", False
-        else:
-            return None, "Invalid Checksum", False
+        """
+        Xử lý callback từ VNPay
+        
+        Returns:
+            tuple: (transaction, message, is_success)
+        """
+        input_data = request.GET.dict()
+        if not input_data:
+            return None, _("No data"), False
+        
+        # Validate checksum
+        if not VNPayService.validate_callback(input_data):
+            return None, _("Invalid Checksum"), False
+        
+        # Extract thông tin từ callback
+        transaction_code = input_data.get('vnp_TxnRef')
+        amount = int(input_data.get('vnp_Amount')) / 100
+        response_code = input_data.get('vnp_ResponseCode')
+        
+        # Gọi Service Layer để xử lý
+        return PaymentService.process_payment_callback(
+            transaction_code=transaction_code,
+            amount=amount,
+            response_code=response_code
+        )
 
 class VNPayReturnView(VNPayBaseView):
     permission_classes = [permissions.AllowAny]
