@@ -1,8 +1,9 @@
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied # <--- Bắt buộc phải có dòng này
+from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import transaction # <--- IMPORT QUAN TRỌNG
 
 from .models import Application, InterviewSchedule
 from .serializers import ApplicationSerializer, InterviewScheduleSerializer
@@ -20,8 +21,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # --- TỐI ƯU QUERY ---
-        # select_related: Lấy luôn thông tin Job, Company của Job đó, và Ứng viên
-        # prefetch_related (nếu cần): Lấy interview_schedule để hiển thị (nếu serializer có dùng)
         queryset = Application.objects.select_related('job', 'job__company', 'candidate')
         
         if user.user_type == 'CANDIDATE':
@@ -77,9 +76,8 @@ class InterviewScheduleViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # 1. Lấy ID đơn ứng tuyển từ request body
-        application_id = self.request.data.get('application') # Frontend thường gửi field tên là 'application' khớp với serializer
-        
-        # Fallback nếu frontend gửi 'application_id'
+        # Hỗ trợ cả 2 key 'application' hoặc 'application_id' để tiện cho frontend
+        application_id = self.request.data.get('application') 
         if not application_id:
             application_id = self.request.data.get('application_id')
 
@@ -92,12 +90,16 @@ class InterviewScheduleViewSet(viewsets.ModelViewSet):
         except Application.DoesNotExist:
             raise PermissionDenied("Đơn ứng tuyển không tồn tại hoặc bạn không có quyền lên lịch cho đơn này.")
 
-        # 2. Lưu lịch phỏng vấn
-        interview = serializer.save(application=application)
-        
-        # 3. Cập nhật trạng thái đơn ứng tuyển -> INTERVIEW
-        application.status = 'INTERVIEW'
-        application.save()
+        # [TỐI ƯU] Bắt đầu Transaction: Đảm bảo tính toàn vẹn dữ liệu
+        with transaction.atomic():
+            # 2. Lưu lịch phỏng vấn
+            interview = serializer.save(application=application)
+            
+            # 3. Cập nhật trạng thái đơn ứng tuyển -> INTERVIEW
+            application.status = 'INTERVIEW'
+            application.save()
 
         # 4. Gửi email mời (Async - chạy ngầm)
-        send_interview_invitation_email.delay(interview.id)
+        # QUAN TRỌNG: Để ngoài transaction để tránh việc Worker chạy trước khi DB commit xong
+        if interview:
+            send_interview_invitation_email.delay(interview.id)
