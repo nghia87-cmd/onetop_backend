@@ -29,6 +29,7 @@ env/
 .vscode/
 *.swp
 *.swo
+.cache/
 
 # --- OS Generated Files ---
 .DS_Store
