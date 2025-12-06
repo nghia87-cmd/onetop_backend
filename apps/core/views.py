@@ -1,8 +1,38 @@
 # apps/core/views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status
 from apps.jobs.models import Job
+from apps.core.websocket_ticket import WebSocketTicketService
+
+
+class WebSocketTicketView(APIView):
+    """
+    API endpoint để lấy one-time ticket cho WebSocket
+    
+    POST /api/v1/ws-ticket/
+    Headers: Authorization: Bearer <access_token>
+    
+    Response:
+    {
+        "ticket": "random_32_char_string",
+        "expires_in": 10
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Generate ticket cho user hiện tại"""
+        user = request.user
+        ticket = WebSocketTicketService.generate_ticket(user.id)
+        
+        return Response({
+            "ticket": ticket,
+            "expires_in": WebSocketTicketService.TICKET_EXPIRY,
+            "message": "Use this ticket to connect WebSocket within 10 seconds"
+        }, status=status.HTTP_200_OK)
+
 
 class GeneralConfigView(APIView):
     """

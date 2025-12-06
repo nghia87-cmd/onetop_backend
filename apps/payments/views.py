@@ -4,7 +4,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.conf import settings
 from django.utils import timezone
-from django.db import transaction as db_transaction # Đổi tên để tránh trùng với model Transaction
+from django.db import transaction as db_transaction
+from ipware import get_client_ip as get_client_ip_safe
 import datetime
 import uuid
 from datetime import timedelta 
@@ -57,8 +58,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
         vnp.requestData['vnp_OrderType'] = 'billpayment'
         vnp.requestData['vnp_Locale'] = 'vn'
         
-        ipaddr = self.get_client_ip(request)
-        vnp.requestData['vnp_IpAddr'] = ipaddr
+        # Lấy IP an toàn với ipware (chống spoofing)
+        client_ip, is_routable = get_client_ip_safe(request)
+        vnp.requestData['vnp_IpAddr'] = client_ip or '127.0.0.1'
         
         vnp.requestData['vnp_CreateDate'] = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
         vnp.requestData['vnp_ReturnUrl'] = settings.VNPAY_RETURN_URL
@@ -69,14 +71,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
             "payment_url": vnpay_payment_url,
             "transaction_code": trans_code
         })
-
-    def get_client_ip(self, request):
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
 
 class VNPayBaseView(APIView):
     """Class cha chứa logic xử lý chung cho cả ReturnURL và IPN"""
