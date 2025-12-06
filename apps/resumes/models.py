@@ -39,6 +39,16 @@ class Resume(TimeStampedModel):
         verbose_name="Generated PDF File"
     )
 
+    def save(self, *args, **kwargs):
+        """
+        Override save để đảm bảo chỉ có 1 CV primary per user
+        """
+        if self.is_primary:
+            # Unset tất cả CV primary khác của user này
+            Resume.objects.filter(user=self.user, is_primary=True).exclude(pk=self.pk).update(is_primary=False)
+        
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.title} - {self.user.email}"
 

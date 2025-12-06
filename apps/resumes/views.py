@@ -16,6 +16,9 @@ from .serializers import (
 # Import task Celery đã tạo (file apps/resumes/tasks.py)
 from .tasks import generate_resume_pdf_async
 
+# Import throttling
+from apps.core.throttling import PDFGenerationThrottle
+
 logger = logging.getLogger(__name__)
 
 class ResumeViewSet(viewsets.ModelViewSet):
@@ -35,12 +38,15 @@ class ResumeViewSet(viewsets.ModelViewSet):
 
     # ==================================================================
     # [NÂNG CẤP] XUẤT PDF BẤT ĐỒNG BỘ (ASYNC) - KHẮC PHỤC TREO SERVER
+    # [BẢO MẬT] Thêm throttling để tránh spam
     # ==================================================================
     
-    @action(detail=True, methods=['post'], url_path='generate-pdf')
+    @action(detail=True, methods=['post'], url_path='generate-pdf', 
+            throttle_classes=[PDFGenerationThrottle])
     def generate_pdf(self, request, pk=None):
         """
         API Trigger việc tạo PDF qua Celery Worker (Non-blocking).
+        Giới hạn: 5 requests/hour per user để tránh spam
         Frontend gọi API này, nhận về 'PROCESSING', sau đó đợi thông báo hoặc poll API download.
         URL: POST /api/v1/resumes/{id}/generate-pdf/
         """

@@ -8,6 +8,7 @@ from django.db import transaction # <--- IMPORT QUAN TRỌNG
 from .models import Application, InterviewSchedule
 from .serializers import ApplicationSerializer, InterviewScheduleSerializer
 from .tasks import send_interview_invitation_email
+from apps.core.throttling import ApplicationSubmissionThrottle
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
@@ -16,6 +17,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['status', 'job']
     ordering_fields = ['created_at']
+    
+    def get_throttles(self):
+        """Apply throttling only for create (submit application)"""
+        if self.action == 'create':
+            return [ApplicationSubmissionThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         user = self.request.user
