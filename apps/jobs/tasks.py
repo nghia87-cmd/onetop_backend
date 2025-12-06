@@ -3,23 +3,19 @@
 import logging
 from celery import shared_task, chain
 from django.conf import settings
-from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
-from django.db.models import Q
+from django.utils.html import strip_tags
+from datetime import timedelta
+# [NÂNG CẤP] Import các class xử lý email chuyên nghiệp
+from django.core.mail import get_connection, EmailMultiAlternatives
 from apps.users.models import User
 from .models import Job
-from datetime import timedelta
-from django.core.mail import send_mass_mail # Cần import thêm
 
 logger = logging.getLogger(__name__)
 
-# Kích thước lô (batch size)
-BATCH_SIZE = 500 # Kích thước lý tưởng, có thể điều chỉnh
+BATCH_SIZE = 500
 
-# ====================================================================
-# [ĐIỂM YẾU 2] TASK ĐIỀU PHỐI (DISPATCHER)
-# ====================================================================
 @shared_task
 def send_daily_job_alerts():
     """
@@ -27,12 +23,11 @@ def send_daily_job_alerts():
     """
     logger.info("Starting daily job alert dispatch task...")
     
-    # Chỉ lấy ID của các ứng viên để tiết kiệm bộ nhớ
-    # Dùng values_list(..., flat=True) để lấy danh sách ID tối giản
+    # Chỉ lấy ID để tiết kiệm bộ nhớ
     candidate_ids = list(User.objects.filter(
         user_type=User.UserType.CANDIDATE,
-        is_active=True,
-        is_verified=True # Chỉ gửi cho user đã verified
+        is_active=True
+        # is_verified=True # Bỏ comment nếu có trường này
     ).values_list('id', flat=True))
     
     total_candidates = len(candidate_ids)
@@ -41,95 +36,107 @@ def send_daily_job_alerts():
         logger.info("No candidates found to send alerts.")
         return "No candidates processed."
 
-    # Chia danh sách ID thành các lô nhỏ (Batching)
+    # Chia nhỏ task (Batching)
     task_chain = []
     for i in range(0, total_candidates, BATCH_SIZE):
         batch_ids = candidate_ids[i:i + BATCH_SIZE]
-        # Thêm task xử lý lô vào chuỗi
         task_chain.append(bulk_create_daily_job_alerts.s(batch_ids))
 
-    # Chạy chuỗi task (chain) bất đồng bộ
+    # Chạy chuỗi task bất đồng bộ
     if task_chain:
         chain(task_chain).apply_async()
-        logger.info(f"Dispatched {len(task_chain)} batches for a total of {total_candidates} candidates.")
-        return f"Dispatched {len(task_chain)} batches for a total of {total_candidates} candidates."
+        return f"Dispatched {len(task_chain)} batches for {total_candidates} candidates."
     
     return "No candidates processed."
 
-
-# ====================================================================
-# [ĐIỂM YẾU 2] TASK XỬ LÝ LÔ (BATCH PROCESSOR)
-# ====================================================================
 @shared_task
 def bulk_create_daily_job_alerts(candidate_ids):
     """
-    Task xử lý lô: Xử lý thông báo việc làm cho một lô ứng viên.
+    Task xử lý lô: Tối ưu N+1 Query và Sử dụng Single SMTP Connection
     """
-    logger.info(f"Processing job alerts for a batch of {len(candidate_ids)} candidates.")
+    logger.info(f"Processing batch of {len(candidate_ids)} candidates.")
     
-    candidates_batch = User.objects.filter(id__in=candidate_ids)
+    # 1. Lấy danh sách Job mới trong 24h qua MỘT LẦN DUY NHẤT
     one_day_ago = timezone.now() - timedelta(days=1)
     
-    emails_to_send = []
+    # Chỉ lấy các trường cần thiết -> Giảm tải RAM
+    new_jobs = list(Job.objects.filter(
+        created_at__gte=one_day_ago,
+        status='PUBLISHED'
+    ).select_related('company').only(
+        'id', 'title', 'location', 'salary_min', 'salary_max', 'company__name'
+    ))
 
-    # SỬ DỤNG .iterator() để giảm bộ nhớ khi xử lý từng ứng viên
-    for candidate in candidates_batch.iterator(): 
-        # Logic tìm việc làm
-        job_query = Q()
-        if candidate.desired_job_title:
-            job_query |= Q(title__icontains=candidate.desired_job_title)
-        if candidate.desired_location:
-            job_query |= Q(location__icontains=candidate.desired_location)
+    if not new_jobs:
+        return "No new jobs found today. Skip sending."
 
-        relevant_jobs = Job.objects.filter(
-            job_query,
-            created_at__gte=one_day_ago,
-            is_active=True
-        ).select_related('company_profile').order_by('-created_at')[:5]
+    candidates_batch = User.objects.filter(id__in=candidate_ids)
+    
+    # Danh sách chứa các đối tượng Email sẽ gửi
+    messages = []
 
-        if relevant_jobs:
+    # 2. Xử lý logic so khớp trong bộ nhớ (Python Memory)
+    for candidate in candidates_batch.iterator():
+        matched_jobs = []
+        
+        # Lấy tiêu chí của ứng viên an toàn (tránh lỗi AttributeError nếu field null)
+        target_title = candidate.desired_job_title.lower() if getattr(candidate, 'desired_job_title', None) else ""
+        target_location = candidate.desired_location.lower() if getattr(candidate, 'desired_location', None) else ""
+
+        if not target_title and not target_location:
+            continue 
+
+        # So khớp
+        for job in new_jobs:
+            title_match = target_title in job.title.lower() if target_title else False
+            location_match = target_location in job.location.lower() if target_location else False
+            
+            if title_match or location_match:
+                matched_jobs.append(job)
+                if len(matched_jobs) >= 5: # Giới hạn 5 job/mail
+                    break
+        
+        # 3. Tạo đối tượng Email (Chưa gửi ngay)
+        if matched_jobs:
             context = {
                 'user': candidate,
-                'jobs': relevant_jobs,
+                'jobs': matched_jobs,
                 'SITE_URL': getattr(settings, 'FRONTEND_URL', 'http://localhost:3000') 
             }
-            html_message = render_to_string('emails/daily_job_alert.html', context)
             
-            emails_to_send.append(
-                (
-                    "Job Alert: New Opportunities Await!",
-                    candidate.email,
-                    html_message
-                )
+            subject = "🔥 Việc làm mới phù hợp với bạn hôm nay!"
+            html_content = render_to_string('emails/daily_job_alert.html', context)
+            text_content = strip_tags(html_content) # Tạo bản text thuần cho client không hỗ trợ HTML
+            
+            # Tạo đối tượng EmailMultiAlternatives
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content, # Nội dung plain text
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[candidate.email]
             )
+            # Đính kèm nội dung HTML
+            email.attach_alternative(html_content, "text/html")
+            
+            messages.append(email)
 
-    # Dùng send_mass_mail để gửi email hàng loạt
-    if emails_to_send:
-        # Tách việc gửi ra một task khác để quản lý lỗi dễ hơn (tùy chọn)
-        send_mass_emails_task.delay(emails_to_send)
-        logger.info(f"Dispatched {len(emails_to_send)} job alert emails for batch.")
-
-    return f"Processed batch of {len(candidate_ids)} candidates. Dispatched {len(emails_to_send)} emails."
-
-
-@shared_task(rate_limit="10/s") # Giới hạn 10 email/giây để tránh bị server email block
-def send_mass_emails_task(email_data_list):
-    """
-    Task gửi email hàng loạt thực tế
-    email_data_list: List of (subject, recipient, html_content)
-    """
-    messages = []
-    for subject, recipient, html_content in email_data_list:
-        messages.append((
-            subject,
-            "Please view this email in an HTML-compatible client.", # Body text
-            settings.DEFAULT_FROM_EMAIL,
-            [recipient],
-            html_message
-        ))
+    # 4. Gửi email hàng loạt (Bulk Send) qua 1 kết nối duy nhất
+    if messages:
+        try:
+            # Mở kết nối SMTP thủ công
+            connection = get_connection()
+            connection.open()
+            
+            # Gửi toàn bộ danh sách messages
+            # send_messages sẽ trả về số lượng email gửi thành công
+            sent_count = connection.send_messages(messages)
+            
+            connection.close()
+            logger.info(f"Successfully sent {sent_count} job alert emails.")
+            return f"Processed batch. Sent {sent_count} emails."
+            
+        except Exception as e:
+            logger.error(f"Failed to send bulk emails: {str(e)}")
+            return f"Failed to send bulk emails: {str(e)}"
     
-    # send_mass_mail cần một tuple
-    send_mass_mail(tuple(messages), fail_silently=False)
-    
-    logger.info(f"Successfully sent {len(messages)} mass emails.")
-    return f"Successfully sent {len(messages)} mass emails."
+    return "Processed batch. No emails sent."
