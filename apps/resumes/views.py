@@ -1,10 +1,9 @@
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from rest_framework import viewsets, permissions
+import logging
+from django.shortcuts import get_object_or_404
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
-# --- SỬ DỤNG WEASYPRINT ---
-from weasyprint import HTML 
 
 from .models import Resume, WorkExperience, Education, Skill
 from .serializers import (
@@ -13,6 +12,11 @@ from .serializers import (
     EducationSerializer, 
     SkillSerializer
 )
+
+# Import task Celery đã tạo (file apps/resumes/tasks.py)
+from .tasks import generate_resume_pdf_async
+
+logger = logging.getLogger(__name__)
 
 class ResumeViewSet(viewsets.ModelViewSet):
     serializer_class = ResumeSerializer
@@ -29,43 +33,86 @@ class ResumeViewSet(viewsets.ModelViewSet):
         # Tự động gán CV cho user đang đăng nhập
         serializer.save(user=self.request.user)
 
-    # --- TÍNH NĂNG MỚI: XUẤT PDF CHUẨN HARVARD (Dùng WeasyPrint) ---
+    # ==================================================================
+    # [NÂNG CẤP] XUẤT PDF BẤT ĐỒNG BỘ (ASYNC) - KHẮC PHỤC TREO SERVER
+    # ==================================================================
+    
+    @action(detail=True, methods=['post'], url_path='generate-pdf')
+    def generate_pdf(self, request, pk=None):
+        """
+        API Trigger việc tạo PDF qua Celery Worker (Non-blocking).
+        Frontend gọi API này, nhận về 'PROCESSING', sau đó đợi thông báo hoặc poll API download.
+        URL: POST /api/v1/resumes/{id}/generate-pdf/
+        """
+        # Kiểm tra quyền sở hữu
+        try:
+            resume = Resume.objects.get(pk=pk, user=request.user)
+        except Resume.DoesNotExist:
+            raise NotFound("CV không tồn tại hoặc bạn không có quyền truy cập.")
+        
+        # (Tuỳ chọn) Kiểm tra nếu file đã có rồi thì báo luôn
+        if resume.pdf_file and resume.pdf_file.storage.exists(resume.pdf_file.name):
+             return Response(
+                {
+                    "status": "READY", 
+                    "message": "File PDF đã sẵn sàng.",
+                    "download_url": resume.pdf_file.url
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        # Kích hoạt Celery Task (Task trả về ngay lập tức, worker sẽ xử lý sau)
+        task = generate_resume_pdf_async.delay(resume.id)
+        
+        logger.info(f"PDF generation task started for resume {pk}. Task ID: {task.id}")
+        
+        return Response(
+            {
+                "message": "Yêu cầu tạo PDF đã được tiếp nhận. Bạn sẽ nhận được thông báo khi hoàn tất.",
+                "status": "PROCESSING",
+                "task_id": task.id,
+            },
+            status=status.HTTP_202_ACCEPTED
+        )
+
     @action(detail=True, methods=['get'], url_path='download')
     def download_pdf(self, request, pk=None):
         """
-        API xuất CV ra file PDF chuẩn Harvard.
+        API tải file PDF đã được tạo (Chỉ trả về URL file tĩnh).
         URL: GET /api/v1/resumes/{id}/download/
         """
         try:
-            # Lấy Resume cùng toàn bộ dữ liệu con
-            resume = Resume.objects.prefetch_related(
-                'educations', 'experiences', 'skills'
-            ).get(pk=pk, user=request.user)
+            resume = Resume.objects.get(pk=pk, user=request.user)
         except Resume.DoesNotExist:
             raise NotFound("CV không tồn tại hoặc bạn không có quyền truy cập.")
 
-        # 1. Render HTML từ Template (Dùng render_to_string thay vì get_template)
-        # Đảm bảo bạn đã có file templates/resumes/harvard_pdf.html
-        html_string = render_to_string('resumes/harvard_pdf.html', {'resume': resume})
+        # Kiểm tra xem task Celery đã tạo xong file và lưu vào DB chưa
+        if not resume.pdf_file:
+            return Response(
+                {
+                    "status": "PENDING", 
+                    "detail": "File PDF chưa được tạo hoặc đang xử lý. Vui lòng gọi API /generate-pdf/ trước."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Trả về URL file để Frontend tải xuống
+        return Response(
+            {
+                "status": "READY", 
+                "download_url": resume.pdf_file.url
+            },
+            status=status.HTTP_200_OK
+        )
 
-        # 2. Tạo HTTP Response dạng PDF
-        response = HttpResponse(content_type='application/pdf')
-        # Đặt tên file tải về (VD: NguyenVanA_CV.pdf)
-        filename = f"{resume.full_name.replace(' ', '_')}_CV.pdf"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
-        # 3. Convert HTML -> PDF bằng WeasyPrint
-        # write_pdf sẽ ghi trực tiếp nội dung binary vào response
-        HTML(string=html_string).write_pdf(response)
-            
-        return response
-
-# --- Base Class cho các thành phần con của CV ---
+# --- Base Class cho các thành phần con của CV (GIỮ NGUYÊN) ---
 class BaseResumeItemViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         # Chỉ lấy các item thuộc về CV của user đang login
+        if not hasattr(self, 'queryset_model'):
+            return []
         return self.queryset_model.objects.filter(resume__user=self.request.user)
 
     def perform_create(self, serializer):

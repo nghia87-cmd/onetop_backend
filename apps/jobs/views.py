@@ -4,23 +4,68 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
-from django.db.models import Q
+# Import Q từ elasticsearch_dsl và đổi tên để tránh nhầm với Django Q
+from elasticsearch_dsl import Q as ES_Q
+
 from .models import Job, SavedJob
 from .serializers import JobSerializer, SavedJobSerializer
+# Import Document Elasticsearch đã định nghĩa
+from .documents import JobDocument
 from apps.resumes.models import Resume
 
+# ====================================================================
+# JOB VIEWSET (ELASTICSEARCH INTEGRATED)
+# ====================================================================
 class JobViewSet(viewsets.ModelViewSet):
-    # Tối ưu N+1 Query: Lấy luôn thông tin công ty
+    # Queryset gốc vẫn dùng DB cho các tác vụ CRUD cơ bản
     queryset = Job.objects.select_related('company').filter(status='PUBLISHED').order_by('-created_at')
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['job_type', 'location', 'company']
-    search_fields = ['title', 'description', 'requirements']
+    # Filter của DRF chỉ áp dụng khi không search hoặc search trên DB
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['job_type', 'location']
     ordering_fields = ['created_at', 'salary_max', 'views_count']
 
+    def list(self, request, *args, **kwargs):
+        """
+        Override hàm list để chuyển hướng tìm kiếm sang Elasticsearch
+        khi có tham số ?search=...
+        """
+        search_term = request.query_params.get('search', '')
+        
+        # 1. Nếu KHÔNG có từ khóa -> Dùng logic mặc định của Django (DB)
+        if not search_term:
+            return super().list(request, *args, **kwargs)
+
+        # 2. Nếu CÓ từ khóa -> Dùng Elasticsearch
+        # Tìm kiếm trên nhiều trường, ưu tiên Title (nhân 3 điểm)
+        q = ES_Q("multi_match", query=search_term, fields=[
+            'title^3',          # Title khớp: x3 điểm
+            'requirements', 
+            'description', 
+            'company.name'
+        ], fuzziness='AUTO')    # Chấp nhận lỗi chính tả nhẹ
+
+        # Filter: Chỉ tìm Job đang PUBLISHED
+        search = JobDocument.search().query(q).filter('term', status='PUBLISHED')
+
+        # Convert kết quả ES về Django QuerySet (giữ nguyên thứ tự Rank)
+        qs = search.to_queryset()
+
+        # Phân trang kết quả
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
     def perform_create(self, serializer):
+        """
+        Giữ nguyên logic kiểm tra quyền lợi (Credits/VIP) và sở hữu công ty
+        """
         user = self.request.user
         company = serializer.validated_data.get('company')
 
@@ -34,11 +79,8 @@ class JobViewSet(viewsets.ModelViewSet):
             if not user.membership_expires_at or user.membership_expires_at < timezone.now():
                  raise PermissionDenied("Gói dịch vụ đã hết hạn. Vui lòng gia hạn.")
             
-            # Check quyền đăng tin (VIP thì miễn phí)
-            if user.has_unlimited_posting:
-                pass 
-            else:
-                # Không phải VIP thì phải có Credits
+            # Check quyền đăng tin (VIP thì miễn phí, thường thì trừ credit)
+            if not user.has_unlimited_posting:
                 if user.job_posting_credits <= 0:
                     raise PermissionDenied("Bạn đã hết lượt đăng tin. Vui lòng mua thêm gói.")
                 
@@ -50,13 +92,13 @@ class JobViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='recommendations')
     def recommendations(self, request):
         """
-        Gợi ý việc làm dựa trên CV chính của ứng viên.
+        Gợi ý việc làm thông minh sử dụng Elasticsearch Bool Query
         """
         user = request.user
         if user.user_type != 'CANDIDATE':
             return Response({"detail": "Chỉ dành cho ứng viên."}, status=403)
 
-        # Lấy CV chính hoặc mới nhất
+        # Lấy CV chính
         resume = Resume.objects.filter(user=user, is_primary=True).first()
         if not resume:
             resume = Resume.objects.filter(user=user).order_by('-created_at').first()
@@ -64,32 +106,48 @@ class JobViewSet(viewsets.ModelViewSet):
         if not resume:
             return Response({"detail": "Bạn cần tạo hồ sơ (CV) trước."}, status=400)
 
-        user_skills = resume.skills.values_list('name', flat=True)
+        # --- ELASTICSEARCH RECOMMENDATION LOGIC ---
+        should_conditions = []
         
-        query = Q()
+        # 1. Matching Tiêu đề CV (Boost 2.0 - Quan trọng)
+        # Nếu CV là "Python Developer", ưu tiên Job có title chứa từ này
         if resume.title:
-            query |= Q(title__icontains=resume.title)
+            should_conditions.append(
+                ES_Q('match', title={'query': resume.title, 'boost': 2.0})
+            )
+        
+        # 2. Matching Kỹ năng (Boost 1.0 - Bình thường)
+        # Tìm các skill của ứng viên trong phần Yêu cầu & Mô tả của Job
+        user_skills = list(resume.skills.values_list('name', flat=True))
         for skill in user_skills:
-            query |= Q(requirements__icontains=skill) | Q(description__icontains=skill)
+            should_conditions.append(ES_Q('match', requirements=skill))
+            should_conditions.append(ES_Q('match', description=skill))
 
-        # Tối ưu query
-        recommended_jobs = Job.objects.select_related('company').filter(
-            status='PUBLISHED'
-        ).filter(query).distinct().order_by('-created_at')[:10]
+        # 3. Tạo Bool Query: "SHOULD" 
+        # Càng thỏa mãn nhiều điều kiện skill/title thì điểm (score) càng cao
+        q = ES_Q('bool', should=should_conditions, minimum_should_match=1)
 
-        serializer = self.get_serializer(recommended_jobs, many=True)
+        # 4. Execute Search
+        search = JobDocument.search().query(q).filter('term', status='PUBLISHED')
+        
+        # Lấy 10 kết quả tốt nhất (ES tự động sort theo _score giảm dần)
+        qs = search.to_queryset()[:10]
+
+        serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+# ====================================================================
+# SAVED JOB VIEWSET
+# ====================================================================
 class SavedJobViewSet(viewsets.ModelViewSet):
     """
-    API Quản lý việc làm đã lưu (Bookmarks)
+    API Quản lý việc làm đã lưu (Bookmarks) - Giữ nguyên dùng DB
     """
     serializer_class = SavedJobSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # select_related job và company để tối ưu
-        return SavedJob.objects.filter(user=self.request.user).select_related('job', 'job__company')
+        return SavedJob.objects.filter(user=self.request.user).select_related('job', 'job__company').order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

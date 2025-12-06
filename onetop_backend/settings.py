@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_elasticsearch_dsl',  # Elasticsearch DSL integration
+    'django.contrib.postgres',  # Sử dụng các trường Postgres nâng cao
 
     # C. Third-party Libraries
     'rest_framework',              # API
@@ -232,5 +234,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.jobs.tasks.send_daily_job_alerts',
         'schedule': crontab(hour=8, minute=0), # 8 giờ sáng hàng ngày
         # 'schedule': 60.0, # (Bật dòng này nếu muốn test ngay mỗi phút)
+    },
+}
+# --- ELASTICSEARCH CONFIGURATION ---
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': 'http://elasticsearch:9200'
     },
 }

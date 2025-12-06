@@ -14,9 +14,11 @@ services:
       # Cấu hình để Docker Web nhìn thấy Docker DB và Redis
       - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
       - REDIS_URL=redis://redis:6379/0
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
       - db
       - redis
+      - elasticsearch
 
   # 2. Database PostgreSQL
   db:
@@ -44,11 +46,12 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
       - REDIS_URL=redis://redis:6379/0
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
       - web
       - redis
       - db
-
+      - elasticsearch
   # 5. Celery Beat (Lên lịch tự động - VD: Quét gói VIP)
   celery_beat:
     build: .
@@ -65,5 +68,18 @@ services:
       - redis
       - db
 
+  # Thêm dịch vụ Elasticsearch
+  elasticsearch:
+    image: elasticsearch:8.11.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # Tắt bảo mật user/pass cho môi trường dev
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Giới hạn RAM để không bị crash
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
 volumes:
   postgres_data:
+  elasticsearch_data:

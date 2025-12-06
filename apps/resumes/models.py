@@ -17,6 +17,14 @@ class Resume(TimeStampedModel):
     file = models.FileField(upload_to='resumes/files/', null=True, blank=True)
     is_primary = models.BooleanField(default=False)
 
+    # TRƯỜNG MỚI ĐỂ LƯU FILE PDF
+    pdf_file = models.FileField(
+        upload_to='resumes/pdf_output/', 
+        null=True, 
+        blank=True, 
+        verbose_name="Generated PDF File"
+    )
+
     def __str__(self):
         return f"{self.title} - {self.user.email}"
 
