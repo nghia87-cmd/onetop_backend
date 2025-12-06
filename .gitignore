@@ -33,3 +33,11 @@ env/
 # --- OS Generated Files ---
 .DS_Store
 Thumbs.db
+
+# --- Docker ---
+docker-compose.override.yml
+.dockerignore
+.gitignore
+
+# --- Celery Beat Schedule File ---
+celerybeat-schedule
