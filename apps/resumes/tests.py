@@ -88,7 +88,11 @@ class ResumeModelTest(TestCase):
         self.assertEqual(Resume.objects.filter(user=self.user).count(), 2)
 
     def test_only_one_primary_resume(self):
-        """Test chỉ có 1 CV primary"""
+        """Test chỉ có 1 CV primary - Auto unset via signal"""
+        # Resume ban đầu đã là primary
+        self.assertTrue(self.resume.is_primary)
+        
+        # Tạo resume thứ 2 và set primary
         resume2 = Resume.objects.create(
             user=self.user,
             title='Second CV',
@@ -98,9 +102,16 @@ class ResumeModelTest(TestCase):
             is_primary=True
         )
         
-        # Khi set resume2 là primary, resume cũ nên auto-unset
-        # (Cần logic trong signal hoặc save method)
-        # Đây là test case để nhắc nhở implement logic này
+        # Resume 2 phải là primary
+        self.assertTrue(resume2.is_primary)
+        
+        # Resume 1 tự động unset primary (qua signal)
+        self.resume.refresh_from_db()
+        self.assertFalse(self.resume.is_primary)
+        
+        # Verify chỉ có 1 primary resume
+        primary_count = Resume.objects.filter(user=self.user, is_primary=True).count()
+        self.assertEqual(primary_count, 1)
 
 
 class WorkExperienceModelTest(TestCase):
@@ -372,14 +383,144 @@ class ResumeAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_generate_pdf(self):
-        """Test trigger tạo PDF"""
+        """Test trigger tạo PDF với Mock"""
+        from unittest.mock import patch, MagicMock
+        
         self.client.force_authenticate(user=self.user)
         
-        url = reverse('resume-generate-pdf', args=[self.resume.id])
-        response = self.client.post(url)
+        with patch('apps.resumes.tasks.HTML') as mock_html_class:
+            # Setup mock WeasyPrint
+            mock_html_instance = MagicMock()
+            mock_html_class.return_value = mock_html_instance
+            mock_html_instance.write_pdf.return_value = b'%PDF-1.4\nFake PDF content'
+            
+            url = reverse('resume-generate-pdf', args=[self.resume.id])
+            response = self.client.post(url)
+            
+            # Expect 200 hoặc 202 (processing)
+            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
+
+
+class ResumePDFGenerationTest(TestCase):
+    """Test cho PDF generation với Mocking"""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='user@test.com',
+            username='user@test.com',
+            password='testpass123',
+            full_name='Test User',
+            user_type='CANDIDATE'
+        )
         
-        # Expect 200 hoặc 202 (processing)
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
+        self.resume = Resume.objects.create(
+            user=self.user,
+            title='My CV',
+            full_name='Test User',
+            email='user@test.com',
+            phone='0123456789',
+            summary='Experienced developer'
+        )
+        
+        # Add some data
+        WorkExperience.objects.create(
+            resume=self.resume,
+            company_name='ABC Corp',
+            position='Developer',
+            start_date=date(2020, 1, 1),
+            end_date=date(2022, 12, 31),
+            description='Worked on web apps'
+        )
+        
+        Education.objects.create(
+            resume=self.resume,
+            school_name='University',
+            major='Computer Science',
+            degree='Bachelor',
+            start_date=date(2016, 9, 1),
+            end_date=date(2020, 6, 30)
+        )
+        
+        Skill.objects.create(resume=self.resume, name='Python', level=5)
+        Skill.objects.create(resume=self.resume, name='Django', level=4)
+
+    def test_pdf_generation_task_with_mock(self):
+        """Test Celery task tạo PDF với Mock WeasyPrint"""
+        from unittest.mock import patch, MagicMock, mock_open
+        from apps.resumes.tasks import generate_resume_pdf_async
+        
+        with patch('apps.resumes.tasks.HTML') as mock_html_class:
+            # Mock HTML class
+            mock_html_instance = MagicMock()
+            mock_html_class.return_value = mock_html_instance
+            
+            # Mock write_pdf method
+            fake_pdf_bytes = b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\nFake PDF content'
+            mock_html_instance.write_pdf.return_value = fake_pdf_bytes
+            
+            # Mock file operations
+            with patch('builtins.open', mock_open()) as mock_file:
+                # Call task
+                result = generate_resume_pdf_async(self.resume.id)
+                
+                # Assert success message
+                self.assertIn('generated and saved', result.lower())
+                
+                # Verify HTML was called with correct data
+                mock_html_class.assert_called_once()
+                
+                # Verify write_pdf was called
+                mock_html_instance.write_pdf.assert_called_once()
+
+    def test_pdf_generation_handles_missing_resume(self):
+        """Test task xử lý khi resume không tồn tại"""
+        from apps.resumes.tasks import generate_resume_pdf_async
+        
+        result = generate_resume_pdf_async(99999)  # Non-existent ID
+        
+        self.assertIn('not found', result.lower())
+
+    def test_pdf_file_saved_to_resume(self):
+        """Test PDF file được lưu vào resume.pdf_file"""
+        from unittest.mock import patch, MagicMock
+        from django.core.files.base import ContentFile
+        
+        with patch('apps.resumes.tasks.HTML') as mock_html_class:
+            mock_html_instance = MagicMock()
+            mock_html_class.return_value = mock_html_instance
+            
+            fake_pdf_bytes = b'%PDF-1.4\nFake content'
+            mock_html_instance.write_pdf.return_value = fake_pdf_bytes
+            
+            # Manually simulate task logic
+            from apps.resumes.tasks import generate_resume_pdf_async
+            
+            with patch('apps.resumes.tasks.default_storage') as mock_storage:
+                mock_storage.save.return_value = f'resumes/pdf_output/resume_{self.resume.id}.pdf'
+                
+                result = generate_resume_pdf_async(self.resume.id)
+                
+                # Verify storage.save was called
+                self.assertTrue(mock_storage.save.called)
+
+    def test_pdf_generation_template_rendering(self):
+        """Test template được render đúng với dữ liệu CV"""
+        from unittest.mock import patch, MagicMock
+        from django.template.loader import render_to_string
+        
+        # Render template thật để test
+        html_content = render_to_string('resumes/resume_pdf.html', {
+            'resume': self.resume,
+            'experiences': self.resume.experiences.all(),
+            'educations': self.resume.educations.all(),
+            'skills': self.resume.skills.all(),
+        })
+        
+        # Assert các thông tin quan trọng có trong HTML
+        self.assertIn('Test User', html_content)
+        self.assertIn('ABC Corp', html_content)
+        self.assertIn('Python', html_content)
+        self.assertIn('University', html_content)
 
     def test_unauthenticated_cannot_access(self):
         """Test chưa đăng nhập không thể truy cập"""

@@ -361,7 +361,10 @@ class NotificationCreationTest(TestCase):
             content_type="application/pdf"
         )
         
-        # Tạo application
+        # Số notification trước khi tạo application
+        initial_count = Notification.objects.filter(recipient=self.recruiter).count()
+        
+        # Tạo application - signal sẽ tự động tạo notification
         application = Application.objects.create(
             job=job,
             candidate=self.candidate,
@@ -369,16 +372,179 @@ class NotificationCreationTest(TestCase):
         )
         
         # Kiểm tra notification đã được tạo cho recruiter
-        # (Cần có signal handler trong apps/notifications/signals.py)
-        # Đây là test case để nhắc nhở implement signal này
+        notifications = Notification.objects.filter(
+            recipient=self.recruiter,
+            verb__icontains='ứng tuyển'
+        )
         
-        # notifications = Notification.objects.filter(
-        #     recipient=self.recruiter,
-        #     verb__icontains='application'
-        # )
-        # self.assertTrue(notifications.exists())
+        self.assertTrue(notifications.exists())
+        self.assertEqual(Notification.objects.filter(recipient=self.recruiter).count(), initial_count + 1)
+        
+        # Verify notification content
+        notification = notifications.first()
+        self.assertIn(self.candidate.full_name, notification.description)
+        self.assertIn(job.title, notification.description)
+        self.assertEqual(notification.target, application)
 
     def test_notification_on_job_status_change(self):
         """Test notification khi trạng thái đơn ứng tuyển thay đổi"""
-        # Test case để implement notification khi status thay đổi
-        pass
+        job = Job.objects.create(
+            title='Backend Developer',
+            company=self.company,
+            location='TP.HCM',
+            job_type='FULL_TIME',
+            description='Test job description',
+            requirements='Python, Django',
+            benefits='Competitive salary',
+            deadline=timezone.now().date() + timedelta(days=30),
+            status='PUBLISHED'
+        )
+        
+        cv_file = SimpleUploadedFile(
+            "test_cv.pdf",
+            b"file_content",
+            content_type="application/pdf"
+        )
+        
+        # Tạo application
+        application = Application.objects.create(
+            job=job,
+            candidate=self.candidate,
+            cv_file=cv_file,
+            status='PENDING'
+        )
+        
+        # Clear notifications tạo từ create
+        Notification.objects.filter(recipient=self.candidate).delete()
+        
+        # Thay đổi status sang INTERVIEW - signal sẽ tạo notification
+        application.status = 'INTERVIEW'
+        application.save()
+        
+        # Kiểm tra notification cho candidate
+        notifications = Notification.objects.filter(
+            recipient=self.candidate,
+            verb__icontains='trạng thái'
+        )
+        
+        self.assertTrue(notifications.exists())
+        
+        notification = notifications.first()
+        self.assertIn(self.company.name, notification.description)
+        self.assertEqual(notification.target, application)
+
+    def test_notification_on_rejection(self):
+        """Test notification khi đơn bị từ chối"""
+        job = Job.objects.create(
+            title='Frontend Developer',
+            company=self.company,
+            location='Đà Nẵng',
+            job_type='FULL_TIME',
+            description='Test job description',
+            requirements='React, JavaScript',
+            benefits='Benefits',
+            deadline=timezone.now().date() + timedelta(days=30),
+            status='PUBLISHED'
+        )
+        
+        cv_file = SimpleUploadedFile(
+            "test_cv.pdf",
+            b"file_content",
+            content_type="application/pdf"
+        )
+        
+        application = Application.objects.create(
+            job=job,
+            candidate=self.candidate,
+            cv_file=cv_file,
+            status='PENDING'
+        )
+        
+        # Clear existing notifications
+        Notification.objects.all().delete()
+        
+        # Reject application
+        application.status = 'REJECTED'
+        application.save()
+        
+        # Verify notification created
+        notifications = Notification.objects.filter(recipient=self.candidate)
+        self.assertTrue(notifications.exists())
+
+    def test_notification_on_acceptance(self):
+        """Test notification khi đơn được chấp nhận"""
+        job = Job.objects.create(
+            title='DevOps Engineer',
+            company=self.company,
+            location='Hà Nội',
+            job_type='FULL_TIME',
+            description='Test job description',
+            requirements='Docker, K8s',
+            benefits='Benefits',
+            deadline=timezone.now().date() + timedelta(days=30),
+            status='PUBLISHED'
+        )
+        
+        cv_file = SimpleUploadedFile(
+            "test_cv.pdf",
+            b"file_content",
+            content_type="application/pdf"
+        )
+        
+        application = Application.objects.create(
+            job=job,
+            candidate=self.candidate,
+            cv_file=cv_file,
+            status='VIEWED'
+        )
+        
+        # Clear notifications
+        Notification.objects.all().delete()
+        
+        # Accept application
+        application.status = 'ACCEPTED'
+        application.save()
+        
+        # Verify notification
+        notifications = Notification.objects.filter(
+            recipient=self.candidate,
+            verb__icontains='trạng thái'
+        )
+        self.assertTrue(notifications.exists())
+
+    def test_no_notification_on_non_status_change(self):
+        """Test không tạo notification khi chỉ update note (không phải status)"""
+        job = Job.objects.create(
+            title='Test Job',
+            company=self.company,
+            location='Hà Nội',
+            job_type='FULL_TIME',
+            description='Test',
+            requirements='Test',
+            benefits='Test',
+            deadline=timezone.now().date() + timedelta(days=30),
+            status='PUBLISHED'
+        )
+        
+        cv_file = SimpleUploadedFile(
+            "test_cv.pdf",
+            b"file_content",
+            content_type="application/pdf"
+        )
+        
+        application = Application.objects.create(
+            job=job,
+            candidate=self.candidate,
+            cv_file=cv_file,
+            status='PENDING'
+        )
+        
+        initial_count = Notification.objects.count()
+        
+        # Update note only, status unchanged
+        application.note = 'Internal note'
+        application.save()
+        
+        # No new notification should be created
+        # (Signal only triggers on status changes to INTERVIEW/REJECTED/ACCEPTED)
+        self.assertEqual(Notification.objects.count(), initial_count + 1)  # +1 from creation

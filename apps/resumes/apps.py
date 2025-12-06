@@ -9,3 +9,5 @@ class ResumesConfig(AppConfig):
     def ready(self):
         # Đảm bảo Celery đăng ký task khi ứng dụng khởi động
         import apps.resumes.tasks
+        # Import signals để đăng ký
+        import apps.resumes.signals
