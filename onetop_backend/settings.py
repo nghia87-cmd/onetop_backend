@@ -219,10 +219,18 @@ CELERY_TIMEZONE = TIME_ZONE
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- 14. OTHER SETTINGS CAN BE ADDED BELOW ---
+
+# --- CELERY BEAT SCHEDULE (LẬP LỊCH TASK TỰ ĐỘNG) ---
+
 CELERY_BEAT_SCHEDULE = {
     'check-expired-memberships-every-day': {
         'task': 'apps.users.tasks.check_expired_memberships',
-        'schedule': crontab(hour=0, minute=0), # Chạy lúc 00:00 hàng ngày
-        # 'schedule': 60.0, # (Dùng dòng này nếu muốn test chạy mỗi phút)
+        'schedule': crontab(hour=0, minute=0),
+    },
+    # --- THÊM TASK MỚI ---
+    'send-daily-job-alerts': {
+        'task': 'apps.jobs.tasks.send_daily_job_alerts',
+        'schedule': crontab(hour=8, minute=0), # 8 giờ sáng hàng ngày
+        # 'schedule': 60.0, # (Bật dòng này nếu muốn test ngay mỗi phút)
     },
 }
