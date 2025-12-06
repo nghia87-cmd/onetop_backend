@@ -1,17 +1,12 @@
 from django.db import models
 from django.core.validators import FileExtensionValidator
-from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from apps.core.models import TimeStampedModel
 from apps.jobs.models import Job
+# [REFACTOR] Import validator chung để tránh lặp code
+from apps.core.validators import validate_file_size
 
 User = get_user_model()
-
-# --- Validator: Kiểm tra dung lượng file (Có thể tách ra file utils.py dùng chung) ---
-def validate_file_size(value):
-    limit = 5 * 1024 * 1024  # Giới hạn 5 MB
-    if value.size > limit:
-        raise ValidationError('Dung lượng file quá lớn. Vui lòng tải lên file nhỏ hơn 5MB.')
 
 class Application(TimeStampedModel):
     class Status(models.TextChoices):
@@ -24,13 +19,13 @@ class Application(TimeStampedModel):
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
     candidate = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications')
     
-    # [BẢO MẬT & NÂNG CẤP] Thêm validator cho file CV
+    # [BẢO MẬT & NÂNG CẤP] Sử dụng validator đã import
     cv_file = models.FileField(
         upload_to='applications/cvs/',
         help_text="Tải lên CV đính kèm (PDF, DOC, DOCX). Tối đa 5MB.",
         validators=[
             FileExtensionValidator(allowed_extensions=['pdf', 'doc', 'docx']),
-            validate_file_size
+            validate_file_size # Hàm này giờ được lấy từ apps.core.validators
         ]
     )
     

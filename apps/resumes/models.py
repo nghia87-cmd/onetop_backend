@@ -1,16 +1,11 @@
 from django.db import models
 from django.core.validators import FileExtensionValidator
-from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from apps.core.models import TimeStampedModel
+# Import validator chung từ core (đảm bảo bạn đã tạo file apps/core/validators.py)
+from apps.core.validators import validate_file_size 
 
 User = get_user_model()
-
-# --- Validator: Kiểm tra dung lượng file ---
-def validate_file_size(value):
-    limit = 5 * 1024 * 1024  # Giới hạn 5 MB
-    if value.size > limit:
-        raise ValidationError('Dung lượng file quá lớn. Vui lòng tải lên file nhỏ hơn 5MB.')
 
 class Resume(TimeStampedModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resumes')
@@ -30,13 +25,13 @@ class Resume(TimeStampedModel):
         help_text="Tải lên CV đính kèm (PDF, DOC, DOCX, ảnh). Tối đa 5MB.",
         validators=[
             FileExtensionValidator(allowed_extensions=['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']),
-            validate_file_size
+            validate_file_size # Sử dụng hàm đã import
         ]
     )
     
     is_primary = models.BooleanField(default=False)
 
-    # File PDF được hệ thống tạo ra (Không cần validator vì user không up trực tiếp field này)
+    # File PDF được hệ thống tạo ra
     pdf_file = models.FileField(
         upload_to='resumes/pdf_output/', 
         null=True, 
@@ -59,7 +54,7 @@ class WorkExperience(TimeStampedModel):
     description = models.TextField(blank=True)
 
     class Meta:
-        ordering = ['-start_date'] # Sắp xếp kinh nghiệm mới nhất lên đầu
+        ordering = ['-start_date']
 
 class Education(TimeStampedModel):
     resume = models.ForeignKey(Resume, on_delete=models.CASCADE, related_name='educations')
