@@ -40,15 +40,17 @@ class ApplicationSerializer(serializers.ModelSerializer):
         CRITICAL FIX: Handle soft-deleted jobs in application history
         
         When a job is soft-deleted (is_deleted=True), we still need to show it in user's application history.
-        Using Job.all_objects (includes deleted) instead of Job.objects (only active).
+        Using instance.job_id (raw FK field) instead of instance.job (which returns None for soft-deleted jobs).
         """
         representation = super().to_representation(instance)
         
-        # Override job_info to use all_objects manager (includes soft-deleted jobs)
-        if instance.job:
+        # CRITICAL FIX: Use job_id (raw foreign key) instead of job object
+        # instance.job returns None if job is soft-deleted (SoftDeleteManager filters it out)
+        # but instance.job_id always contains the actual ID from database
+        if instance.job_id:
             try:
                 # Use all_objects to include soft-deleted jobs
-                job = Job.all_objects.get(pk=instance.job.pk)
+                job = Job.all_objects.get(pk=instance.job_id)
                 representation['job_info'] = JobSerializer(job).data
                 
                 # Add flag to indicate if job was deleted (for frontend to show "This job is no longer available")
@@ -57,7 +59,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             except Job.DoesNotExist:
                 # Fallback: Job was hard-deleted (very rare)
                 representation['job_info'] = {
-                    'title': '[Job Deleted]',
+                    'title': '[Công việc đã bị xóa vĩnh viễn]',
                     'is_deleted': True,
                     'company': {'name': 'N/A'}
                 }

@@ -229,6 +229,19 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# CRITICAL FIX: Task Routing for Heavy Tasks
+# Separate PDF generation (WeasyPrint - heavy RAM usage) from normal tasks
+CELERY_TASK_ROUTES = {
+    # Heavy tasks (PDF generation) go to dedicated queue
+    'apps.resumes.tasks.generate_resume_pdf': {'queue': 'heavy_tasks'},
+    # All other tasks use default queue
+    '*': {'queue': 'celery'},
+}
+
+# Worker configuration hints:
+# Default worker: celery -A onetop_backend worker -Q celery --concurrency=4
+# Heavy worker: celery -A onetop_backend worker -Q heavy_tasks --concurrency=2
+
 # Default Primary Key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
