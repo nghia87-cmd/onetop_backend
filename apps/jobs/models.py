@@ -2,11 +2,12 @@ from django.db import models
 from django.utils.text import slugify
 from django.contrib.auth import get_user_model
 from apps.core.models import TimeStampedModel
+from apps.core.soft_delete import SoftDeleteMixin, SoftDeleteManager
 from apps.companies.models import Company
 
 User = get_user_model()
 
-class Job(TimeStampedModel):
+class Job(SoftDeleteMixin, TimeStampedModel):
     class JobType(models.TextChoices):
         FULL_TIME = 'FULL_TIME', 'Toàn thời gian'
         PART_TIME = 'PART_TIME', 'Bán thời gian'
@@ -50,7 +51,15 @@ class Job(TimeStampedModel):
         db_index=True  # INDEX: Filter by status
     )
     
+    # Soft Delete inherited from SoftDeleteMixin
+    # - is_deleted: BooleanField
+    # - deleted_at: DateTimeField
+    
     views_count = models.IntegerField(default=0)
+    
+    # Managers
+    objects = SoftDeleteManager()  # Default: exclude deleted
+    all_objects = models.Manager()  # Include deleted
 
     def save(self, *args, **kwargs):
         if not self.slug:

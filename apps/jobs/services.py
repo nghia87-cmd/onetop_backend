@@ -126,16 +126,49 @@ class JobService:
     @staticmethod
     def delete_job(job, user):
         """
-        Xóa Job (chỉ owner được phép)
+        Xóa Job (Soft Delete - chỉ đánh dấu is_deleted=True)
         
         Args:
             job: Job object cần xóa
             user: User thực hiện request
+            
+        Note:
+            Sử dụng Soft Delete để:
+            - Khôi phục dữ liệu nếu cần
+            - Audit trail (biết ai xóa khi nào)
+            - Tuân thủ quy định lưu trữ dữ liệu
+            
+            Để xóa vĩnh viễn: job.hard_delete()
         """
         # Kiểm tra ownership
         if job.company and job.company.owner != user:
             raise PermissionDenied(_("You do not have permission to delete this job."))
         
-        job_id = job.id
-        job.delete()
-        logger.info(f"Job {job_id} deleted by user {user.id}")
+        # Soft Delete (inherited from SoftDeleteMixin)
+        job.delete()  # Set is_deleted=True, deleted_at=now
+        
+        logger.info(f"Job {job.id} soft-deleted by user {user.id} at {job.deleted_at}")
+    
+    @staticmethod
+    def restore_job(job, user):
+        """
+        Khôi phục Job đã xóa (Soft Delete)
+        
+        Args:
+            job: Job object đã bị xóa
+            user: User thực hiện restore
+            
+        Returns:
+            bool: True if restored, False if already active
+        """
+        # Kiểm tra ownership
+        if job.company and job.company.owner != user:
+            raise PermissionDenied(_("You do not have permission to restore this job."))
+        
+        restored = job.restore()
+        
+        if restored:
+            logger.info(f"Job {job.id} restored by user {user.id}")
+        
+        return restored
+
