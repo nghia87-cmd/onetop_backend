@@ -2,115 +2,192 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <title>Resume</title>
     <style>
         @page {
             size: A4 portrait;
-            margin: 1.5cm;
+            margin: 1.27cm 1.27cm 1.27cm 1.27cm; /* Lề chuẩn 0.5 inch */
         }
+
+        /* Fallback footer for xhtml2pdf: use fixed-position element
+           instead of @frame which can cause parsing issues in some
+           environments. This will appear on every page. */
+        .pdf-footer {
+            position: fixed;
+            bottom: 0cm;
+            left: 1.27cm;
+            right: 1.27cm;
+            text-align: center;
+            font-size: 9pt;
+        }
+
         body {
             font-family: "Times New Roman", Times, serif;
             font-size: 11pt;
-            line-height: 1.4;
-            color: #000;
+            line-height: 1.3;
+            color: #000000;
+            background-color: #ffffff;
         }
+
+        /* --- HEADER --- */
         .header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         .name {
-            font-size: 16pt;
+            font-size: 18pt;
             font-weight: bold;
             text-transform: uppercase;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
+            letter-spacing: 1px;
         }
         .contact-info {
-            font-size: 10pt;
+            font-size: 10.5pt;
         }
+
+        /* --- SECTIONS --- */
         .section {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         .section-title {
             font-size: 12pt;
             font-weight: bold;
             text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-        .item {
+            border-bottom: 1px solid #000; /* Đường gạch chân mảnh */
             margin-bottom: 8px;
+            padding-bottom: 2px;
         }
-        .item-header {
-            display: flex;
-            justify-content: space-between;
+
+        /* --- ITEMS (Dùng Table để căn trái/phải an toàn cho xhtml2pdf) --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2px;
+            border: none;
+        }
+        td {
+            padding: 0;
+            vertical-align: top;
+        }
+        .left-col {
+            text-align: left;
             font-weight: bold;
+            font-size: 11pt;
         }
-        .subtitle {
+        .right-col {
+            text-align: right;
+            font-size: 11pt;
+            white-space: nowrap; /* Không xuống dòng ngày tháng */
+        }
+        
+        .item-subtitle {
             font-style: italic;
+            margin-bottom: 2px;
+            font-size: 11pt;
         }
+
+        /* --- DESCRIPTION & BULLETS --- */
         .description {
+            font-size: 10.5pt;
             margin-top: 2px;
-            margin-left: 15px;
+            margin-bottom: 8px;
+            text-align: justify;
         }
-        .skill-list {
-            margin-top: 5px;
+        /* Giả lập bullet points */
+        .bullet-point {
+            padding-left: 15px;
+            text-indent: -10px;
+        }
+        .bullet-char {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        /* --- SKILLS --- */
+        .skill-section {
+            font-size: 11pt;
+        }
+        .skill-label {
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <!-- Header -->
     <div class="header">
         <div class="name">{{ resume.full_name }}</div>
         <div class="contact-info">
-            {{ resume.address }} | {{ resume.phone }} | {{ resume.email }}
+            {{ resume.address }} &nbsp;•&nbsp; {{ resume.phone }} &nbsp;•&nbsp; {{ resume.email }}
         </div>
     </div>
 
-    <!-- Education -->
+    {% if resume.summary %}
+    <div class="section">
+        <div class="section-title">Professional Summary</div>
+        <div class="description">
+            {{ resume.summary|linebreaksbr }}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="section">
         <div class="section-title">Education</div>
         {% for edu in resume.educations.all %}
-        <div class="item">
-            <div class="item-header">
-                <div>{{ edu.school_name }}</div>
-                <div>
-                    {{ edu.start_date|date:"M Y" }} –
-                    {% if edu.end_date %}{{ edu.end_date|date:"M Y" }}{% else %}Present{% endif %}
-                </div>
-            </div>
-            <div class="subtitle">
+        <div style="margin-bottom: 6px;">
+            <table>
+                <tr>
+                    <td class="left-col">{{ edu.school_name }}</td>
+                    <td class="right-col">
+                        {{ edu.start_date|date:"M Y" }} – 
+                        {% if edu.end_date %}{{ edu.end_date|date:"M Y" }}{% else %}Present{% endif %}
+                    </td>
+                </tr>
+            </table>
+            <div class="item-subtitle">
                 {{ edu.degree }} in {{ edu.major }}
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- Experience -->
     <div class="section">
         <div class="section-title">Experience</div>
         {% for exp in resume.experiences.all %}
-        <div class="item">
-            <div class="item-header">
-                <div>{{ exp.company_name }}</div>
-                <div>
-                    {{ exp.start_date|date:"M Y" }} –
-                    {% if exp.is_current %}Present{% else %}{{ exp.end_date|date:"M Y" }}{% endif %}
-                </div>
+        <div style="margin-bottom: 8px;">
+            <table>
+                <tr>
+                    <td class="left-col">{{ exp.company_name }}</td>
+                    <td class="right-col">
+                        {{ exp.start_date|date:"M Y" }} – 
+                        {% if exp.is_current %}Present{% else %}{{ exp.end_date|date:"M Y" }}{% endif %}
+                    </td>
+                </tr>
+            </table>
+            
+            <div class="item-subtitle">
+                {{ exp.position }}
             </div>
-            <div class="subtitle">{{ exp.position }}</div>
+
             <div class="description">
-                {{ exp.description|linebreaksbr }}
+                {% if exp.description %}
+                    {{ exp.description|linebreaksbr }}
+                {% endif %}
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- Skills -->
     <div class="section">
-        <div class="section-title">Skills</div>
-        <div class="skill-list">
+        <div class="section-title">Skills & Interests</div>
+        <div class="skill-section">
+            <span class="skill-label">Technical Skills:</span>
             {% for skill in resume.skills.all %}
-                {{ skill.name }}{% if not forloop.last %} • {% endif %}
+                {{ skill.name }} ({{ skill.level }}/5){% if not forloop.last %}, {% endif %}
             {% endfor %}
         </div>
+        </div>
+
+    <div class="pdf-footer">
+        <pdf:pagenumber />
     </div>
 </body>
 </html>
