@@ -7,7 +7,12 @@ User = get_user_model()
 
 class Company(TimeStampedModel):
     name = models.CharField(max_length=255, unique=True)
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    slug = models.SlugField(
+        max_length=255, 
+        unique=True, 
+        blank=True,
+        db_index=True  # INDEX: SEO-friendly URLs, hay query theo slug
+    )
     logo = models.ImageField(upload_to='company_logos/', null=True, blank=True)
     website = models.URLField(max_length=200, blank=True)
     description = models.TextField()

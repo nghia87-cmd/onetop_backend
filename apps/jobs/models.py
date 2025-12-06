@@ -19,10 +19,18 @@ class Job(TimeStampedModel):
         CLOSED = 'CLOSED', 'Đã đóng'
 
     title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    slug = models.SlugField(
+        max_length=255, 
+        unique=True, 
+        blank=True,
+        db_index=True  # INDEX: SEO-friendly URLs
+    )
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='jobs')
     
-    location = models.CharField(max_length=100) # Ví dụ: "Hà Nội", "Hồ Chí Minh"
+    location = models.CharField(
+        max_length=100,
+        db_index=True  # INDEX: Filter by location hay dùng
+    )
     job_type = models.CharField(max_length=20, choices=JobType.choices, default=JobType.FULL_TIME)
     
     # Mức lương (Có thể null nếu là Thỏa thuận)
@@ -34,8 +42,13 @@ class Job(TimeStampedModel):
     requirements = models.TextField() # Yêu cầu
     benefits = models.TextField() # Quyền lợi
 
-    deadline = models.DateField()
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PUBLISHED)
+    deadline = models.DateField(db_index=True)  # INDEX: Filter by deadline
+    status = models.CharField(
+        max_length=20, 
+        choices=Status.choices, 
+        default=Status.PUBLISHED,
+        db_index=True  # INDEX: Filter by status
+    )
     
     views_count = models.IntegerField(default=0)
 

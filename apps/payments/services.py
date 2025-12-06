@@ -11,7 +11,7 @@ import datetime
 import logging
 
 from .models import ServicePackage, Transaction
-from .vnpay import vnpay
+from .vnpay import VNPayGateway, VNPayConfig
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ class VNPayService:
     @staticmethod
     def generate_payment_url(package, trans_code, client_ip='127.0.0.1'):
         """
-        Tạo URL thanh toán VNPay
+        Tạo URL thanh toán VNPay (Refactored với VNPayGateway)
         
         Args:
             package: ServicePackage object
@@ -176,21 +176,23 @@ class VNPayService:
         Returns:
             str: URL thanh toán VNPay
         """
-        vnp = vnpay()
-        vnp.requestData['vnp_Version'] = '2.1.0'
-        vnp.requestData['vnp_Command'] = 'pay'
-        vnp.requestData['vnp_TmnCode'] = settings.VNPAY_TMN_CODE
-        vnp.requestData['vnp_Amount'] = int(package.price * 100)
-        vnp.requestData['vnp_CurrCode'] = 'VND'
-        vnp.requestData['vnp_TxnRef'] = trans_code
-        vnp.requestData['vnp_OrderInfo'] = f"Thanh toan don hang {trans_code}"
-        vnp.requestData['vnp_OrderType'] = 'billpayment'
-        vnp.requestData['vnp_Locale'] = 'vn'
-        vnp.requestData['vnp_IpAddr'] = client_ip
-        vnp.requestData['vnp_CreateDate'] = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-        vnp.requestData['vnp_ReturnUrl'] = settings.VNPAY_RETURN_URL
+        # Tạo VNPay config từ settings
+        config = VNPayConfig(
+            tmn_code=settings.VNPAY_TMN_CODE,
+            hash_secret=settings.VNPAY_HASH_SECRET,
+            payment_url=settings.VNPAY_URL,
+            return_url=settings.VNPAY_RETURN_URL
+        )
         
-        payment_url = vnp.get_payment_url(settings.VNPAY_URL, settings.VNPAY_HASH_SECRET)
+        # Generate payment URL với stateless VNPayGateway
+        payment_url = VNPayGateway.create_payment_url(
+            config=config,
+            txn_ref=trans_code,
+            amount=int(package.price * 100),
+            order_info=f"Thanh toan don hang {trans_code}",
+            ip_address=client_ip,
+            created_date=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        )
         
         logger.debug(f"Generated VNPay URL for transaction {trans_code}")
         return payment_url
@@ -198,7 +200,7 @@ class VNPayService:
     @staticmethod
     def validate_callback(request_data):
         """
-        Validate checksum từ VNPay callback
+        Validate checksum từ VNPay callback (Refactored với VNPayGateway)
         
         Args:
             request_data: dict chứa tất cả params từ VNPay
@@ -206,9 +208,10 @@ class VNPayService:
         Returns:
             bool: True nếu checksum hợp lệ
         """
-        vnp = vnpay()
-        vnp.responseData = request_data
-        is_valid = vnp.validate_response(settings.VNPAY_HASH_SECRET)
+        is_valid = VNPayGateway.validate_callback(
+            secret_key=settings.VNPAY_HASH_SECRET,
+            response_data=request_data
+        )
         
         if not is_valid:
             logger.error(f"Invalid VNPay checksum for txnRef {request_data.get('vnp_TxnRef')}")

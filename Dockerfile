@@ -21,10 +21,11 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# 3. Cài đặt Python Dependencies
-COPY requirements.txt .
+# 3. Cài đặt Python Dependencies (PRODUCTION ONLY - base.txt)
+# Chỉ cài base.txt để giảm dung lượng image và tăng bảo mật
+COPY requirements/base.txt requirements/base.txt
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements/base.txt
 
 # ==========================================
 # GIAI ĐOẠN 2: Runner (Image cuối cùng để chạy)

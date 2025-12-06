@@ -2,6 +2,7 @@
 Job Service Layer
 Xử lý business logic liên quan đến Job posting
 """
+from django.conf import settings
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied
@@ -69,15 +70,18 @@ class JobService:
         JobService.validate_job_posting_permission(user, company)
         
         # Trừ credits nếu không phải VIP (sử dụng F() để atomic update)
+        # Số credit trừ lấy từ settings (có thể config khuyến mãi)
         if not user.has_unlimited_posting:
             from apps.users.models import User
+            
+            credit_cost = getattr(settings, 'JOB_POSTING_CREDIT_COST', 1)
             
             # Atomic decrement để tránh race condition
             updated = User.objects.filter(
                 pk=user.pk,
-                job_posting_credits__gt=0  # Đảm bảo > 0 trước khi trừ
+                job_posting_credits__gte=credit_cost  # Đảm bảo đủ credits
             ).update(
-                job_posting_credits=F('job_posting_credits') - 1
+                job_posting_credits=F('job_posting_credits') - credit_cost
             )
             
             if not updated:

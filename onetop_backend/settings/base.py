@@ -255,3 +255,18 @@ WEBSOCKET_TICKET_EXPIRY = env.int('WEBSOCKET_TICKET_EXPIRY', default=10)
 
 # --- 18. FRONTEND URL (REQUIRED IN PRODUCTION) ---
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
+
+# --- 19. BUSINESS LOGIC CONSTANTS ---
+# Job posting credits per action
+JOB_POSTING_CREDIT_COST = env.int('JOB_POSTING_CREDIT_COST', default=1)
+
+# File upload limits (in bytes)
+MAX_CV_FILE_SIZE = env.int('MAX_CV_FILE_SIZE', default=5 * 1024 * 1024)  # 5MB
+MAX_COMPANY_LOGO_SIZE = env.int('MAX_COMPANY_LOGO_SIZE', default=2 * 1024 * 1024)  # 2MB
+
+# Email batch size for job alerts
+JOB_ALERT_BATCH_SIZE = env.int('JOB_ALERT_BATCH_SIZE', default=500)
+
+# PDF generation timeout (seconds)
+PDF_GENERATION_TIMEOUT = env.int('PDF_GENERATION_TIMEOUT', default=30)
+

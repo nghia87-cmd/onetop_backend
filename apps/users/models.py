@@ -18,8 +18,17 @@ class User(AbstractUser, TimeStampedModel):
     avatar = models.ImageField(upload_to='avatars/', default='default_avatar.png', null=True, blank=True)
     
     # 2 trường quan trọng cho gói dịch vụ (Payments)
-    job_posting_credits = models.IntegerField(default=0, help_text="Số lượt đăng tin còn lại")
-    membership_expires_at = models.DateTimeField(null=True, blank=True, help_text="Ngày hết hạn gói dịch vụ")
+    job_posting_credits = models.IntegerField(
+        default=0, 
+        help_text="Số lượt đăng tin còn lại",
+        db_index=True  # INDEX: Hay query khi check credits
+    )
+    membership_expires_at = models.DateTimeField(
+        null=True, 
+        blank=True, 
+        help_text="Ngày hết hạn gói dịch vụ",
+        db_index=True  # INDEX: Hay query khi check expired
+    )
 
     has_unlimited_posting = models.BooleanField(default=False, help_text="Được phép đăng tin không giới hạn")
     can_view_contact = models.BooleanField(default=False, help_text="Được phép xem thông tin liên hệ ứng viên")
