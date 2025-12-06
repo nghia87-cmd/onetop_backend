@@ -247,3 +247,9 @@ ELASTICSEARCH_DSL = {
         'hosts': 'http://elasticsearch:9200'
     },
 }
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
