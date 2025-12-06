@@ -12,7 +12,7 @@ from django.core.mail import get_connection, EmailMultiAlternatives
 from apps.users.models import User
 from .models import Job
 # [OPTIMIZATION] Import Elasticsearch để tìm kiếm nhanh
-from elasticsearch_dsl import Q as ES_Q
+from elasticsearch_dsl import Q as ES_Q, MultiSearch
 from .documents import JobDocument
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,11 @@ def bulk_create_daily_job_alerts(self, candidate_ids):
         # Danh sách chứa các đối tượng Email sẽ gửi
         messages = []
 
-        # 2. Sử dụng Elasticsearch để tìm kiếm thay vì Python loop
+        # 2. CRITICAL FIX: Use MultiSearch to reduce N+1 queries (500 candidates = 1 ES request instead of 500)
+        # Build all search queries first without executing
+        ms = MultiSearch(index='jobs')
+        candidate_search_map = []  # Keep mapping between candidates and their searches
+        
         for candidate in candidates_batch.iterator():
             # Lấy tiêu chí của ứng viên
             target_title = getattr(candidate, 'desired_job_title', None) or ""
@@ -96,7 +100,7 @@ def bulk_create_daily_job_alerts(self, candidate_ids):
             if not target_title and not target_location:
                 continue 
 
-            # Tạo query Elasticsearch
+            # Tạo query Elasticsearch (but don't execute yet)
             search = JobDocument.search()
             
             # Filter theo thời gian và status
@@ -120,10 +124,21 @@ def bulk_create_daily_job_alerts(self, candidate_ids):
             # Giới hạn 5 job/mail, sắp xếp theo created_at mới nhất
             search = search.sort('-created_at')[:5]
             
-            # Execute query và lấy kết quả
-            try:
-                response = search.execute()
-                
+            # Add search to MultiSearch batch
+            ms = ms.add(search)
+            candidate_search_map.append(candidate)
+        
+        # Execute all searches in a single HTTP request to Elasticsearch
+        try:
+            if not candidate_search_map:
+                return "No candidates with search criteria processed."
+            
+            responses = ms.execute()
+            logger.info(f"Executed MultiSearch for {len(candidate_search_map)} candidates in single ES request")
+            
+            # Process results
+            for candidate, response in zip(candidate_search_map, responses):
+                # Check if response has hits (some searches may return 0 results)
                 if not response.hits:
                     continue
                 
@@ -135,30 +150,30 @@ def bulk_create_daily_job_alerts(self, candidate_ids):
                 
                 if not matched_jobs:
                     continue
-                    
-            except Exception as e:
-                logger.error(f"Elasticsearch query failed for candidate {candidate.id}: {str(e)}")
-                continue
-            
-            # 3. Tạo đối tượng Email
-            context = {
-                'user': candidate,
-                'jobs': matched_jobs,
-                'SITE_URL': getattr(settings, 'FRONTEND_URL', 'http://localhost:3000') 
-            }
-            
-            subject = "🔥 Việc làm mới phù hợp với bạn hôm nay!"
-            html_content = render_to_string('emails/daily_job_alert.html', context)
-            text_content = strip_tags(html_content)
-            
-            email = EmailMultiAlternatives(
-                subject=subject,
-                body=text_content,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[candidate.email]
-            )
-            email.attach_alternative(html_content, "text/html")
-            messages.append(email)
+                
+                # 3. Tạo đối tượng Email
+                context = {
+                    'user': candidate,
+                    'jobs': matched_jobs,
+                    'SITE_URL': getattr(settings, 'FRONTEND_URL', 'http://localhost:3000') 
+                }
+                
+                subject = "🔥 Việc làm mới phù hợp với bạn hôm nay!"
+                html_content = render_to_string('emails/daily_job_alert.html', context)
+                text_content = strip_tags(html_content)
+                
+                email = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_content,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[candidate.email]
+                )
+                email.attach_alternative(html_content, "text/html")
+                messages.append(email)
+        
+        except Exception as e:
+            logger.error(f"MultiSearch execution failed: {str(e)}")
+            raise self.retry(exc=e, countdown=self.default_retry_delay)
 
         # 4. Gửi email hàng loạt qua 1 kết nối duy nhất
         if messages:

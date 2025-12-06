@@ -5,3 +5,7 @@ class UsersConfig(AppConfig):
     name = 'apps.users'  # <--- BẮT BUỘC PHẢI CÓ 'apps.' ở trước
     label = 'users'
     verbose_name = "Quản lý người dùng"
+    
+    def ready(self):
+        """Import signals when app is ready"""
+        import apps.users.signals  # noqa

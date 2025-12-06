@@ -39,7 +39,10 @@ def generate_resume_pdf_async(self, resume_id):
         logger.info(f"Successfully generated and saved PDF for Resume ID: {resume_id}")
 
         # 4. Gửi thông báo/Email cho người dùng
-        download_url = resume.pdf_file.url
+        # CRITICAL FIX: Add full domain URL for email links (pdf_file.url returns relative path like /media/resumes/file.pdf)
+        relative_url = resume.pdf_file.url
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        full_download_url = f"{frontend_url}{relative_url}" if not relative_url.startswith('http') else relative_url
         
         # Kiểm tra xem có email user không trước khi gửi
         if resume.user.email:
@@ -48,7 +51,7 @@ def generate_resume_pdf_async(self, resume_id):
                     subject=str(_('Your CV is ready for download')),
                     message=_("Your CV ({title}) has been successfully created. Download at: {url}").format(
                         title=resume.title,
-                        url=download_url
+                        url=full_download_url
                     ),
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[resume.user.email],
