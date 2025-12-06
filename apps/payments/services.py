@@ -192,13 +192,15 @@ class VNPayService:
         )
         
         # Generate payment URL với stateless VNPayGateway
+        # CRITICAL FIX #3: Dùng timezone.localtime() thay vì datetime.now()
+        # VNPay yêu cầu giờ GMT+7 (Vietnam), nếu server ở UTC sẽ lệch 7 tiếng
         payment_url = VNPayGateway.create_payment_url(
             config=config,
             txn_ref=trans_code,
             amount=int(package.price * 100),
             order_info=f"Thanh toan don hang {trans_code}",
             ip_address=client_ip,
-            created_date=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+            created_date=timezone.localtime(timezone.now()).strftime('%Y%m%d%H%M%S')
         )
         
         logger.debug(f"Generated VNPay URL for transaction {trans_code}")

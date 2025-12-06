@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from ipware import get_client_ip
 from django.utils.translation import gettext_lazy as _
 from django.core.cache import cache
+from django.db import IntegrityError  # CRITICAL FIX #2: Handle race condition
 import hashlib
 
 from .models import ServicePackage, Transaction
@@ -63,24 +64,43 @@ class TransactionViewSet(viewsets.ModelViewSet):
             # Lấy IP với django-ipware (chống spoofing)
             client_ip, is_routable = get_client_ip(request)
             
-            # Sử dụng Service Layer để tạo payment (với idempotency_key)
-            result = PaymentService.create_payment_transaction(
-                user=request.user,
-                package_id=package_id,
-                idempotency_key=idempotency_key  # Pass to service
-            )
-            
-            # Regenerate payment URL với IP thực của client
-            result['payment_url'] = VNPayService.generate_payment_url(
-                package=result['transaction'].package,
-                trans_code=result['transaction_code'],
-                client_ip=client_ip or '127.0.0.1'
-            )
-            
-            response_data = {
-                "payment_url": result['payment_url'],
-                "transaction_code": result['transaction_code']
-            }
+            # CRITICAL FIX #2: Handle race condition khi 2 requests cùng idempotency_key
+            # đến cùng lúc (cách nhau vài ms)
+            try:
+                # Sử dụng Service Layer để tạo payment (với idempotency_key)
+                result = PaymentService.create_payment_transaction(
+                    user=request.user,
+                    package_id=package_id,
+                    idempotency_key=idempotency_key  # Pass to service
+                )
+                
+                # Regenerate payment URL với IP thực của client
+                result['payment_url'] = VNPayService.generate_payment_url(
+                    package=result['transaction'].package,
+                    trans_code=result['transaction_code'],
+                    client_ip=client_ip or '127.0.0.1'
+                )
+                
+                response_data = {
+                    "payment_url": result['payment_url'],
+                    "transaction_code": result['transaction_code']
+                }
+                
+            except IntegrityError:
+                # Race condition: Transaction đã được tạo bởi request khác (cách vài ms)
+                # Trả về transaction đã tồn tại thay vì 500 error
+                existing = Transaction.objects.get(
+                    idempotency_key=idempotency_key,
+                    user=request.user
+                )
+                response_data = {
+                    "payment_url": VNPayService.generate_payment_url(
+                        package=existing.package,
+                        trans_code=existing.transaction_code,
+                        client_ip=client_ip or '127.0.0.1'
+                    ),
+                    "transaction_code": existing.transaction_code
+                }
             
             # Cache successful response for 24 hours if Idempotency-Key provided
             if idempotency_key:

@@ -56,10 +56,15 @@ class JobDocument(Document):
         
         queryset_pagination = 10000
         
-        # CRITICAL FIX #2: Index ALL jobs (including soft-deleted) để ES có thể update/delete
-        # Filter is_deleted at SEARCH time instead of INDEX time
-        # Khi job.delete() được gọi, signal post_save sẽ update is_deleted=True trong ES
-        # Nếu filter ở đây, ES không tìm thấy job để update -> ghost record
+        # CRITICAL FIX #1: Phải dùng all_objects để ES có thể update/delete soft-deleted jobs
+        # Nếu dùng default manager (SoftDeleteManager), khi job.delete() được gọi:
+        # - Signal post_save kích hoạt
+        # - ES thư viện gọi Job.objects.get(id=...) để lấy dữ liệu mới
+        # - SoftDeleteManager chặn job đã xóa -> DoesNotExist
+        # - ES bỏ qua việc update -> Ghost record
+        def get_queryset(self):
+            """Force use all_objects manager to include soft-deleted jobs"""
+            return self.model.all_objects.all()
         
         # Tự động cập nhật ES khi model thay đổi
         # ignore_signals = True # Bật lên nếu muốn update thủ công bằng Cronjob để tối ưu write DB
