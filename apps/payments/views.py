@@ -131,3 +131,62 @@ class VNPayReturnView(APIView):
                 return Response({"RspCode": "00", "Message": "Payment Failed", "status": "FAILED"})
         else:
             return Response({"RspCode": "97", "Message": "Invalid Checksum"}, status=status.HTTP_400_BAD_REQUEST)
+        
+class VNPayIPNView(APIView):
+    """
+    API IPN (Instant Payment Notification) để VNPay gọi ngầm báo kết quả.
+    Đảm bảo đơn hàng được cập nhật kể cả khi User tắt trình duyệt.
+    URL: GET /api/v1/payments/vnpay_ipn/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        inputData = request.GET.dict()
+        if not inputData:
+            return Response({"RspCode": "99", "Message": "Input data required"}, status=status.HTTP_200_OK)
+
+        vnp = vnpay()
+        vnp.responseData = inputData
+        order_id = inputData.get('vnp_TxnRef')
+        amount = int(inputData.get('vnp_Amount')) / 100
+        vnp_ResponseCode = inputData.get('vnp_ResponseCode')
+        
+        # 1. Kiểm tra Checksum
+        if vnp.validate_response(settings.VNPAY_HASH_SECRET):
+            try:
+                transaction = Transaction.objects.get(transaction_code=order_id)
+            except Transaction.DoesNotExist:
+                return Response({"RspCode": "01", "Message": "Order not found"}, status=status.HTTP_200_OK)
+
+            # 2. Kiểm tra số tiền
+            if transaction.amount != amount:
+                return Response({"RspCode": "04", "Message": "Invalid amount"}, status=status.HTTP_200_OK)
+
+            # 3. Kiểm tra trạng thái đơn hàng (Nếu đã xong rồi thì thôi)
+            if transaction.status != 'PENDING':
+                return Response({"RspCode": "02", "Message": "Order already confirmed"}, status=status.HTTP_200_OK)
+
+            # 4. Xử lý kết quả
+            if vnp_ResponseCode == "00":
+                transaction.status = 'SUCCESS'
+                transaction.save()
+                
+                # Cộng quyền lợi cho User
+                user = transaction.user
+                package = transaction.package
+                if package:
+                    user.job_posting_credits += package.job_posting_limit
+                    now = timezone.now()
+                    if user.membership_expires_at and user.membership_expires_at > now:
+                        user.membership_expires_at += timedelta(days=package.duration_days)
+                    else:
+                        user.membership_expires_at = now + timedelta(days=package.duration_days)
+                    user.save()
+                
+                return Response({"RspCode": "00", "Message": "Confirm Success"}, status=status.HTTP_200_OK)
+            else:
+                transaction.status = 'FAILED'
+                transaction.save()
+                return Response({"RspCode": "00", "Message": "Payment Failed"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"RspCode": "97", "Message": "Invalid Checksum"}, status=status.HTTP_200_OK)
