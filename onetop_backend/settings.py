@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import environ
 from datetime import timedelta
+from celery.schedules import crontab
 
 # --- 1. SETUP MÔI TRƯỜNG & ĐƯỜNG DẪN ---
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -78,7 +79,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'backend.urls'
+ROOT_URLCONF = 'onetop_backend.urls'
 
 TEMPLATES = [
     {
@@ -96,8 +97,8 @@ TEMPLATES = [
 ]
 
 # --- 4. CẤU HÌNH SERVER & DATABASE ---
-WSGI_APPLICATION = 'backend.wsgi.application'
-ASGI_APPLICATION = 'backend.asgi.application' 
+WSGI_APPLICATION = 'onetop_backend.wsgi.application'
+ASGI_APPLICATION = 'onetop_backend.asgi.application' 
 
 # Database
 DATABASES = {
@@ -216,3 +217,12 @@ CELERY_TIMEZONE = TIME_ZONE
 
 # Default Primary Key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- 14. OTHER SETTINGS CAN BE ADDED BELOW ---
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-memberships-every-day': {
+        'task': 'apps.users.tasks.check_expired_memberships',
+        'schedule': crontab(hour=0, minute=0), # Chạy lúc 00:00 hàng ngày
+        # 'schedule': 60.0, # (Dùng dòng này nếu muốn test chạy mỗi phút)
+    },
+}

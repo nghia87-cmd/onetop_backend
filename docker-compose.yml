@@ -1,0 +1,69 @@
+services:
+  # 1. Django Web Server
+  web:
+    build: .
+    # Chạy Daphne (ASGI) để hỗ trợ Chat Realtime
+    command: daphne -b 0.0.0.0 -p 8000 onetop_backend.asgi:application
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Cấu hình để Docker Web nhìn thấy Docker DB và Redis
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  # 2. Database PostgreSQL
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=onetop_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+
+  # 3. Redis (Cache & WebSocket Message Broker)
+  redis:
+    image: redis:7-alpine
+
+  # 4. Celery Worker (Xử lý tác vụ nặng & Email)
+  celery_worker:
+    build: .
+    # Lưu ý: -A onetop_backend phải khớp với tên thư mục chứa settings.py
+    command: celery -A onetop_backend worker --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - web
+      - redis
+      - db
+
+  # 5. Celery Beat (Lên lịch tự động - VD: Quét gói VIP)
+  celery_beat:
+    build: .
+    command: celery -A onetop_backend beat --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - web
+      - redis
+      - db
+
+volumes:
+  postgres_data:
