@@ -255,6 +255,15 @@ ELASTICSEARCH_DSL = {
     },
 }
 
+# CRITICAL FIX: Use Celery for async Elasticsearch indexing
+# Prevents API blocking when ES is slow/down
+# Set to 'celery' in production, 'default' in development
+ELASTICSEARCH_DSL_SIGNAL_PROCESSOR = env(
+    'ELASTICSEARCH_DSL_SIGNAL_PROCESSOR',
+    default='django_elasticsearch_dsl.signals.RealTimeSignalProcessor'  # Sync for dev
+)
+# Production value: 'django_elasticsearch_dsl.signals.CelerySignalProcessor'
+
 # --- 17. REDIS CACHE CONFIGURATION ---
 CACHES = {
     'default': {
