@@ -1,7 +1,6 @@
 # ==========================================
 # GIAI ĐOẠN 1: Builder (Dùng để cài đặt thư viện)
 # ==========================================
-# [FIX] Đổi 'as' thành 'AS' để khớp với 'FROM'
 FROM python:3.12-slim-bookworm AS builder
 
 WORKDIR /app
@@ -37,6 +36,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
+# [FIX] Cấu hình đường dẫn cache cho Fontconfig (WeasyPrint)
+ENV XDG_CACHE_HOME=/app/.cache
 
 # 4. Cài đặt các gói hệ thống CẦN THIẾT ĐỂ CHẠY (Runtime libraries)
 RUN apt-get update && apt-get install -y \
@@ -58,7 +59,8 @@ COPY --from=builder /opt/venv /opt/venv
 COPY . .
 
 # 8. Phân quyền sở hữu file cho user mới
-RUN chown -R appuser:appgroup /app
+# [FIX] Tạo thư mục cache và cấp quyền
+RUN mkdir -p /app/.cache && chown -R appuser:appgroup /app
 
 # 9. Chuyển sang user non-root
 USER appuser
