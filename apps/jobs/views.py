@@ -6,6 +6,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 # Import Q từ elasticsearch_dsl và đổi tên để tránh nhầm với Django Q
 from elasticsearch_dsl import Q as ES_Q
 
@@ -83,6 +85,14 @@ class JobViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             validated_data=serializer.validated_data
         )
+    
+    @method_decorator(cache_page(60 * 15))  # CRITICAL FIX: Cache job detail for 15 minutes
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Get single job detail - cached for performance
+        Cache invalidated on job update/delete via signals
+        """
+        return super().retrieve(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='recommendations')
     def recommendations(self, request):

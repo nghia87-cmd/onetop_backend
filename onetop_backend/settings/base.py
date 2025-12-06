@@ -255,13 +255,36 @@ ELASTICSEARCH_DSL = {
     },
 }
 
-# --- 17. WEBSOCKET TICKET CONFIGURATION ---
+# --- 17. REDIS CACHE CONFIGURATION ---
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': env('REDIS_URL', default='redis://redis:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'onetop',
+        'TIMEOUT': 300,  # Default cache timeout: 5 minutes
+    }
+}
+
+# --- 18. THROTTLE RATE LIMITS (Configurable for Production) ---
+# PDF Generation Rate Limit
+PDF_GENERATION_RATE = env('PDF_GENERATION_RATE', default='5/hour')
+
+# Application Submission Rate Limit
+APPLICATION_SUBMISSION_RATE = env('APPLICATION_SUBMISSION_RATE', default='20/day')
+
+# Message Send Rate Limit
+MESSAGE_SEND_RATE = env('MESSAGE_SEND_RATE', default='100/hour')
+
+# --- 19. WEBSOCKET TICKET CONFIGURATION ---
 WEBSOCKET_TICKET_EXPIRY = env.int('WEBSOCKET_TICKET_EXPIRY', default=10)
 
-# --- 18. FRONTEND URL (REQUIRED IN PRODUCTION) ---
+# --- 20. FRONTEND URL (REQUIRED IN PRODUCTION) ---
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 
-# --- 19. BUSINESS LOGIC CONSTANTS ---
+# --- 21. BUSINESS LOGIC CONSTANTS ---
 # Job posting credits per action
 JOB_POSTING_CREDIT_COST = env.int('JOB_POSTING_CREDIT_COST', default=1)
 

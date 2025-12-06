@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from ipware import get_client_ip as get_client_ip_safe
 from django.utils.translation import gettext_lazy as _
+from django.core.cache import cache
+import hashlib
 
 from .models import ServicePackage, Transaction
 from .serializers import ServicePackageSerializer, TransactionSerializer
@@ -23,8 +25,21 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def create_payment(self, request):
-        """Tạo giao dịch thanh toán mới"""
+        """Tạo giao dịch thanh toán mới với Idempotency-Key support"""
         package_id = request.data.get('package_id')
+        
+        # CRITICAL FIX: Idempotency-Key to prevent duplicate payments
+        # Client should send unique key per payment attempt (e.g., UUID)
+        idempotency_key = request.headers.get('Idempotency-Key')
+        
+        if idempotency_key:
+            # Generate cache key from user ID + idempotency key
+            cache_key = f"payment_idempotency:{request.user.id}:{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
+            
+            # Check if this request was already processed (within 24 hours)
+            cached_response = cache.get(cache_key)
+            if cached_response:
+                return Response(cached_response, status=status.HTTP_200_OK)
         
         try:
             # Lấy IP an toàn với ipware (chống spoofing)
@@ -43,10 +58,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 client_ip=client_ip or '127.0.0.1'
             )
             
-            return Response({
+            response_data = {
                 "payment_url": result['payment_url'],
                 "transaction_code": result['transaction_code']
-            })
+            }
+            
+            # Cache successful response for 24 hours if Idempotency-Key provided
+            if idempotency_key:
+                cache.set(cache_key, response_data, timeout=60 * 60 * 24)  # 24 hours
+            
+            return Response(response_data)
             
         except ServicePackage.DoesNotExist:
             return Response(
