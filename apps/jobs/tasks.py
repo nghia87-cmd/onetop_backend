@@ -11,6 +11,9 @@ from datetime import timedelta
 from django.core.mail import get_connection, EmailMultiAlternatives
 from apps.users.models import User
 from .models import Job
+# [OPTIMIZATION] Import Elasticsearch để tìm kiếm nhanh
+from elasticsearch_dsl import Q as ES_Q
+from .documents import JobDocument
 
 logger = logging.getLogger(__name__)
 
@@ -52,85 +55,99 @@ def send_daily_job_alerts():
 @shared_task
 def bulk_create_daily_job_alerts(candidate_ids):
     """
-    Task xử lý lô: Tối ưu N+1 Query và Sử dụng Single SMTP Connection
+    Task xử lý lô: Tối ưu với Elasticsearch thay vì Python loop
     """
     logger.info(f"Processing batch of {len(candidate_ids)} candidates.")
     
-    # 1. Lấy danh sách Job mới trong 24h qua MỘT LẦN DUY NHẤT
+    # 1. Lấy danh sách Job mới trong 24h qua
     one_day_ago = timezone.now() - timedelta(days=1)
     
-    # Chỉ lấy các trường cần thiết -> Giảm tải RAM
-    new_jobs = list(Job.objects.filter(
-        created_at__gte=one_day_ago,
-        status='PUBLISHED'
-    ).select_related('company').only(
-        'id', 'title', 'location', 'salary_min', 'salary_max', 'company__name'
-    ))
-
-    if not new_jobs:
-        return "No new jobs found today. Skip sending."
-
-    candidates_batch = User.objects.filter(id__in=candidate_ids)
+    candidates_batch = User.objects.filter(id__in=candidate_ids).only(
+        'id', 'email', 'full_name', 'desired_job_title', 'desired_location'
+    )
     
     # Danh sách chứa các đối tượng Email sẽ gửi
     messages = []
 
-    # 2. Xử lý logic so khớp trong bộ nhớ (Python Memory)
+    # 2. Sử dụng Elasticsearch để tìm kiếm thay vì Python loop
     for candidate in candidates_batch.iterator():
-        matched_jobs = []
-        
-        # Lấy tiêu chí của ứng viên an toàn (tránh lỗi AttributeError nếu field null)
-        target_title = candidate.desired_job_title.lower() if getattr(candidate, 'desired_job_title', None) else ""
-        target_location = candidate.desired_location.lower() if getattr(candidate, 'desired_location', None) else ""
+        # Lấy tiêu chí của ứng viên
+        target_title = getattr(candidate, 'desired_job_title', None) or ""
+        target_location = getattr(candidate, 'desired_location', None) or ""
 
         if not target_title and not target_location:
             continue 
 
-        # So khớp
-        for job in new_jobs:
-            title_match = target_title in job.title.lower() if target_title else False
-            location_match = target_location in job.location.lower() if target_location else False
-            
-            if title_match or location_match:
-                matched_jobs.append(job)
-                if len(matched_jobs) >= 5: # Giới hạn 5 job/mail
-                    break
+        # Tạo query Elasticsearch
+        search = JobDocument.search()
         
-        # 3. Tạo đối tượng Email (Chưa gửi ngay)
-        if matched_jobs:
-            context = {
-                'user': candidate,
-                'jobs': matched_jobs,
-                'SITE_URL': getattr(settings, 'FRONTEND_URL', 'http://localhost:3000') 
-            }
+        # Filter theo thời gian và status
+        search = search.filter('range', created_at={'gte': one_day_ago})
+        search = search.filter('term', status='PUBLISHED')
+        
+        # Build query điều kiện OR cho title và location
+        queries = []
+        if target_title:
+            # Match fuzzy cho title (cho phép sai chính tả nhẹ)
+            queries.append(ES_Q('match', title={'query': target_title, 'fuzziness': 'AUTO'}))
+        
+        if target_location:
+            # Match fuzzy cho location
+            queries.append(ES_Q('match', location={'query': target_location, 'fuzziness': 'AUTO'}))
+        
+        # Kết hợp queries với OR
+        if queries:
+            search = search.query('bool', should=queries, minimum_should_match=1)
+        
+        # Giới hạn 5 job/mail, sắp xếp theo created_at mới nhất
+        search = search.sort('-created_at')[:5]
+        
+        # Execute query và lấy kết quả
+        try:
+            response = search.execute()
             
-            subject = "🔥 Việc làm mới phù hợp với bạn hôm nay!"
-            html_content = render_to_string('emails/daily_job_alert.html', context)
-            text_content = strip_tags(html_content) # Tạo bản text thuần cho client không hỗ trợ HTML
+            if not response.hits:
+                continue
             
-            # Tạo đối tượng EmailMultiAlternatives
-            email = EmailMultiAlternatives(
-                subject=subject,
-                body=text_content, # Nội dung plain text
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[candidate.email]
+            # Convert Elasticsearch hits thành Job objects
+            job_ids = [hit.meta.id for hit in response.hits]
+            matched_jobs = Job.objects.filter(id__in=job_ids).select_related('company').only(
+                'id', 'title', 'location', 'salary_min', 'salary_max', 'company__name', 'slug'
             )
-            # Đính kèm nội dung HTML
-            email.attach_alternative(html_content, "text/html")
             
-            messages.append(email)
+            if not matched_jobs:
+                continue
+                
+        except Exception as e:
+            logger.error(f"Elasticsearch query failed for candidate {candidate.id}: {str(e)}")
+            continue
+        
+        # 3. Tạo đối tượng Email
+        context = {
+            'user': candidate,
+            'jobs': matched_jobs,
+            'SITE_URL': getattr(settings, 'FRONTEND_URL', 'http://localhost:3000') 
+        }
+        
+        subject = "🔥 Việc làm mới phù hợp với bạn hôm nay!"
+        html_content = render_to_string('emails/daily_job_alert.html', context)
+        text_content = strip_tags(html_content)
+        
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=text_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[candidate.email]
+        )
+        email.attach_alternative(html_content, "text/html")
+        messages.append(email)
 
-    # 4. Gửi email hàng loạt (Bulk Send) qua 1 kết nối duy nhất
+    # 4. Gửi email hàng loạt qua 1 kết nối duy nhất
     if messages:
         try:
-            # Mở kết nối SMTP thủ công
             connection = get_connection()
             connection.open()
-            
-            # Gửi toàn bộ danh sách messages
-            # send_messages sẽ trả về số lượng email gửi thành công
             sent_count = connection.send_messages(messages)
-            
             connection.close()
             logger.info(f"Successfully sent {sent_count} job alert emails.")
             return f"Processed batch. Sent {sent_count} emails."
