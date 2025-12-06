@@ -1,13 +1,23 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
-from .models import Application
+from .models import Application, InterviewSchedule
 from apps.jobs.serializers import JobSerializer
 from apps.users.serializers import UserSerializer
+
+# [TÍNH NĂNG MỚI] Serializer cho lịch phỏng vấn
+class InterviewScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InterviewSchedule
+        fields = '__all__'
+        read_only_fields = ['application'] # Application ID sẽ được gán tự động trong View
 
 class ApplicationSerializer(serializers.ModelSerializer):
     # Nhúng thông tin Job và Candidate để Frontend hiển thị chi tiết
     job_info = JobSerializer(source='job', read_only=True)
     candidate_info = UserSerializer(source='candidate', read_only=True)
+    
+    # [TÍNH NĂNG MỚI] Nhúng thông tin lịch phỏng vấn (nếu có) vào response
+    interview_schedule = InterviewScheduleSerializer(read_only=True)
 
     class Meta:
         model = Application

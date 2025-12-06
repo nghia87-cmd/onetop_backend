@@ -235,6 +235,11 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=8, minute=0), # 8 giờ sáng hàng ngày
         # 'schedule': 60.0, # (Bật dòng này nếu muốn test ngay mỗi phút)
     },
+
+    'check-upcoming-interviews-every-5-minutes': {
+        'task': 'apps.applications.tasks.check_upcoming_interviews',
+        'schedule': crontab(minute='*/5'),
+    },
 }
 # --- ELASTICSEARCH CONFIGURATION ---
 ELASTICSEARCH_DSL = {
