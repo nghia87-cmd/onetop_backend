@@ -21,6 +21,9 @@ class User(AbstractUser, TimeStampedModel):
     job_posting_credits = models.IntegerField(default=0, help_text="Số lượt đăng tin còn lại")
     membership_expires_at = models.DateTimeField(null=True, blank=True, help_text="Ngày hết hạn gói dịch vụ")
 
+    has_unlimited_posting = models.BooleanField(default=False, help_text="Được phép đăng tin không giới hạn")
+    can_view_contact = models.BooleanField(default=False, help_text="Được phép xem thông tin liên hệ ứng viên")
+
     user_type = models.CharField(
         max_length=20, 
         choices=UserType.choices, 

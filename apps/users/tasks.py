@@ -5,10 +5,6 @@ from .models import User
 
 @shared_task
 def check_expired_memberships():
-    """
-    Task chạy định kỳ mỗi ngày để kiểm tra các User hết hạn gói VIP.
-    Nếu hết hạn -> Reset số lượt đăng tin về 0 và xóa ngày hết hạn.
-    """
     now = timezone.now()
     
     # Tìm những người có ngày hết hạn < hiện tại
@@ -16,9 +12,12 @@ def check_expired_memberships():
     
     count = 0
     for user in expired_users:
-        # Logic hạ cấp: Reset quyền lợi
+        # Reset toàn bộ quyền lợi về mo
         user.job_posting_credits = 0 
-        user.membership_expires_at = None # Xóa ngày hết hạn để không quét lại nữa
+        user.has_unlimited_posting = False
+        user.can_view_contact = False
+        user.membership_expires_at = None 
+        
         user.save()
         count += 1
     

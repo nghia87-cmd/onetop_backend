@@ -28,3 +28,24 @@ class ResumeSerializer(serializers.ModelSerializer):
         model = Resume
         fields = '__all__'
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+def to_representation(self, instance):
+        """
+        Ghi đè hàm này để ẩn thông tin nếu người xem không có quyền
+        """
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        # Nếu là chủ sở hữu CV thì luôn thấy
+        if request and request.user == instance.user:
+            return data
+
+        # Nếu là NTD: Check quyền
+        if request and request.user.user_type == 'RECRUITER':
+            if not request.user.can_view_contact:
+                data['email'] = '******** (Nâng cấp VIP để xem)'
+                data['phone'] = '******** (Nâng cấp VIP để xem)'
+                # Ẩn thêm file đính kèm nếu muốn
+                data['file'] = None
+        
+        return data

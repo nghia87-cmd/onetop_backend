@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.conf import settings
 from django.utils import timezone
+from django.db import transaction as db_transaction # Đổi tên để tránh trùng với model Transaction
 import datetime
 import uuid
 from datetime import timedelta 
@@ -35,6 +36,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         order_id = int(timezone.now().timestamp())
         trans_code = str(order_id)
 
+        # Tạo giao dịch PENDING
         transaction = Transaction.objects.create(
             user=request.user,
             package=package,
@@ -43,6 +45,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             status='PENDING'
         )
 
+        # Tạo URL thanh toán VNPay
         vnp = vnpay()
         vnp.requestData['vnp_Version'] = '2.1.0'
         vnp.requestData['vnp_Command'] = 'pay'
@@ -75,118 +78,101 @@ class TransactionViewSet(viewsets.ModelViewSet):
             ip = request.META.get('REMOTE_ADDR')
         return ip
 
-class VNPayReturnView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request):
+class VNPayBaseView(APIView):
+    """Class cha chứa logic xử lý chung cho cả ReturnURL và IPN"""
+    
+    def process_payment(self, request):
         inputData = request.GET.dict()
         if not inputData:
-            return Response({"error": "No data"}, status=status.HTTP_400_BAD_REQUEST)
+            return None, "No data", False
 
         vnp = vnpay()
         vnp.responseData = inputData
         order_id = inputData.get('vnp_TxnRef')
         amount = int(inputData.get('vnp_Amount')) / 100
         vnp_ResponseCode = inputData.get('vnp_ResponseCode')
-        
+
         if vnp.validate_response(settings.VNPAY_HASH_SECRET):
-            try:
-                transaction = Transaction.objects.get(transaction_code=order_id)
-            except Transaction.DoesNotExist:
-                return Response({"RspCode": "01", "Message": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+            # BẮT ĐẦU TRANSACTION DATABASE (Khóa bản ghi để tránh xử lý trùng lặp)
+            with db_transaction.atomic():
+                try:
+                    trans = Transaction.objects.select_for_update().get(transaction_code=order_id)
+                except Transaction.DoesNotExist:
+                    return None, "Order not found", False
 
-            if transaction.amount != amount:
-                return Response({"RspCode": "04", "Message": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
+                if trans.amount != amount:
+                    return None, "Invalid amount", False
 
-            if transaction.status != 'PENDING':
-                return Response({"RspCode": "02", "Message": "Order already confirmed"}, status=status.HTTP_200_OK)
+                if trans.status != 'PENDING':
+                    return trans, "Order already confirmed", True
 
-            if vnp_ResponseCode == "00":
-                transaction.status = 'SUCCESS'
-                transaction.save()
-                
-                user = transaction.user
-                package = transaction.package
-                
-                if package:
-                    user.job_posting_credits += package.job_posting_limit
-                    now = timezone.now()
-                    if user.membership_expires_at and user.membership_expires_at > now:
-                        user.membership_expires_at += timedelta(days=package.duration_days)
-                    else:
-                        user.membership_expires_at = now + timedelta(days=package.duration_days)
-                    user.save()
-
-                return Response({
-                    "RspCode": "00", 
-                    "Message": "Confirm Success", 
-                    "data": {
-                        "credits": user.job_posting_credits,
-                        "expires_at": user.membership_expires_at
-                    }
-                })
-            else:
-                transaction.status = 'FAILED'
-                transaction.save()
-                return Response({"RspCode": "00", "Message": "Payment Failed", "status": "FAILED"})
+                if vnp_ResponseCode == "00":
+                    # --- THANH TOÁN THÀNH CÔNG ---
+                    trans.status = 'SUCCESS'
+                    trans.save()
+                    
+                    user = trans.user
+                    package = trans.package
+                    
+                    if package:
+                        # 1. Cộng ngày hết hạn (Chung cho cả Credit và Subscription)
+                        now = timezone.now()
+                        if user.membership_expires_at and user.membership_expires_at > now:
+                            user.membership_expires_at += timedelta(days=package.duration_days)
+                        else:
+                            user.membership_expires_at = now + timedelta(days=package.duration_days)
+                        
+                        # 2. Kích hoạt quyền lợi dựa trên loại gói
+                        if package.package_type == 'SUBSCRIPTION':
+                            # Gói thuê bao: Bật cờ VIP
+                            if package.allow_unlimited_posting:
+                                user.has_unlimited_posting = True
+                            if package.allow_view_contact:
+                                user.can_view_contact = True
+                        else:
+                            # Gói Credit: Cộng số lượt đăng tin
+                            user.job_posting_credits += package.job_posting_limit
+                        
+                        user.save()
+                    
+                    return trans, "Confirm Success", True
+                else:
+                    # --- THANH TOÁN THẤT BẠI ---
+                    trans.status = 'FAILED'
+                    trans.save()
+                    return trans, "Payment Failed", False
         else:
-            return Response({"RspCode": "97", "Message": "Invalid Checksum"}, status=status.HTTP_400_BAD_REQUEST)
-        
-class VNPayIPNView(APIView):
-    """
-    API IPN (Instant Payment Notification) để VNPay gọi ngầm báo kết quả.
-    Đảm bảo đơn hàng được cập nhật kể cả khi User tắt trình duyệt.
-    URL: GET /api/v1/payments/vnpay_ipn/
-    """
+            return None, "Invalid Checksum", False
+
+class VNPayReturnView(VNPayBaseView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        inputData = request.GET.dict()
-        if not inputData:
-            return Response({"RspCode": "99", "Message": "Input data required"}, status=status.HTTP_200_OK)
-
-        vnp = vnpay()
-        vnp.responseData = inputData
-        order_id = inputData.get('vnp_TxnRef')
-        amount = int(inputData.get('vnp_Amount')) / 100
-        vnp_ResponseCode = inputData.get('vnp_ResponseCode')
+        trans, message, is_success = self.process_payment(request)
         
-        # 1. Kiểm tra Checksum
-        if vnp.validate_response(settings.VNPAY_HASH_SECRET):
-            try:
-                transaction = Transaction.objects.get(transaction_code=order_id)
-            except Transaction.DoesNotExist:
-                return Response({"RspCode": "01", "Message": "Order not found"}, status=status.HTTP_200_OK)
-
-            # 2. Kiểm tra số tiền
-            if transaction.amount != amount:
-                return Response({"RspCode": "04", "Message": "Invalid amount"}, status=status.HTTP_200_OK)
-
-            # 3. Kiểm tra trạng thái đơn hàng (Nếu đã xong rồi thì thôi)
-            if transaction.status != 'PENDING':
-                return Response({"RspCode": "02", "Message": "Order already confirmed"}, status=status.HTTP_200_OK)
-
-            # 4. Xử lý kết quả
-            if vnp_ResponseCode == "00":
-                transaction.status = 'SUCCESS'
-                transaction.save()
-                
-                # Cộng quyền lợi cho User
-                user = transaction.user
-                package = transaction.package
-                if package:
-                    user.job_posting_credits += package.job_posting_limit
-                    now = timezone.now()
-                    if user.membership_expires_at and user.membership_expires_at > now:
-                        user.membership_expires_at += timedelta(days=package.duration_days)
-                    else:
-                        user.membership_expires_at = now + timedelta(days=package.duration_days)
-                    user.save()
-                
-                return Response({"RspCode": "00", "Message": "Confirm Success"}, status=status.HTTP_200_OK)
-            else:
-                transaction.status = 'FAILED'
-                transaction.save()
-                return Response({"RspCode": "00", "Message": "Payment Failed"}, status=status.HTTP_200_OK)
+        if not trans:
+            return Response({"RspCode": "99", "Message": message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if is_success:
+            return Response({
+                "RspCode": "00", 
+                "Message": message, 
+                "data": {
+                    "credits": trans.user.job_posting_credits,
+                    "expires_at": trans.user.membership_expires_at,
+                    "is_vip": trans.user.has_unlimited_posting # Trả về thêm cờ VIP để frontend biết
+                }
+            })
         else:
-            return Response({"RspCode": "97", "Message": "Invalid Checksum"}, status=status.HTTP_200_OK)
+            return Response({"RspCode": "00", "Message": message, "status": "FAILED"})
+
+class VNPayIPNView(VNPayBaseView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        trans, message, is_success = self.process_payment(request)
+        
+        if not trans:
+            return Response({"RspCode": "01", "Message": message}, status=status.HTTP_200_OK)
+        
+        return Response({"RspCode": "00", "Message": message}, status=status.HTTP_200_OK)
