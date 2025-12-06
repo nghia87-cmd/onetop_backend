@@ -3,6 +3,8 @@ from django.dispatch import receiver
 from django.contrib.contenttypes.models import ContentType
 from apps.applications.models import Application
 from apps.notifications.models import Notification
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 @receiver(post_save, sender=Application)
 def create_application_notification(sender, instance, created, **kwargs):
@@ -25,3 +27,22 @@ def create_application_notification(sender, instance, created, **kwargs):
                 content_type=ContentType.objects.get_for_model(instance),
                 object_id=instance.id
             )
+
+@receiver(post_save, sender=Notification)
+def broadcast_notification(sender, instance, created, **kwargs):
+    if created:
+        channel_layer = get_channel_layer()
+        group_name = f"user_{instance.recipient.id}"
+        
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                "type": "send_notification",
+                "data": {
+                    "id": str(instance.id),
+                    "verb": instance.verb,
+                    "description": instance.description,
+                    "is_read": False
+                }
+            }
+        )
