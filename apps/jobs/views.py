@@ -13,6 +13,7 @@ from .serializers import JobSerializer, SavedJobSerializer
 # Import Document Elasticsearch đã định nghĩa
 from .documents import JobDocument
 from apps.resumes.models import Resume
+from .services import JobService  # Import Service Layer
 
 # ====================================================================
 # JOB VIEWSET (ELASTICSEARCH INTEGRATED)
@@ -65,30 +66,14 @@ class JobViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """
-        Giữ nguyên logic kiểm tra quyền lợi (Credits/VIP) và sở hữu công ty
+        Refactored: Sử dụng JobService thay vì xử lý logic trong View
+        
+        View chỉ làm nhiệm vụ nhận request và gọi Service Layer
         """
-        user = self.request.user
-        company = serializer.validated_data.get('company')
-
-        # 1. Kiểm tra sở hữu công ty
-        if company and company.owner != user:
-            raise PermissionDenied("Bạn không có quyền đăng tin cho công ty này.")
-
-        # 2. Logic kiểm tra quyền lợi (VIP/Credit)
-        if user.user_type == 'RECRUITER':
-            # Check hạn sử dụng
-            if not user.membership_expires_at or user.membership_expires_at < timezone.now():
-                 raise PermissionDenied(_("Your service package has expired. Please renew."))
-            
-            # Check quyền đăng tin (VIP thì miễn phí, thường thì trừ credit)
-            if not user.has_unlimited_posting:
-                if user.job_posting_credits <= 0:
-                    raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
-                
-                user.job_posting_credits -= 1
-                user.save()
-
-        serializer.save()
+        JobService.create_job(
+            user=self.request.user,
+            validated_data=serializer.validated_data
+        )
 
     @action(detail=False, methods=['get'], url_path='recommendations')
     def recommendations(self, request):

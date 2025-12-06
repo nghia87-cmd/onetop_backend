@@ -118,11 +118,21 @@ class PaymentService:
         Kích hoạt quyền lợi membership cho user
         
         Logic phức tạp này đã được tách ra để dễ test và maintain
+        
+        RACE CONDITION FIX:
+        - Sử dụng F() expressions để atomic updates
+        - Refresh user sau khi update để có data mới nhất
         """
         if not package:
             return
         
+        from django.db.models import F
+        from apps.users.models import User
+        
         now = timezone.now()
+        
+        # LOCK user row để tránh race condition khi 2 payments cùng lúc
+        user = User.objects.select_for_update().get(pk=user.pk)
         
         # 1. Cộng ngày hết hạn (Chung cho cả Credit và Subscription)
         if user.membership_expires_at and user.membership_expires_at > now:
@@ -138,8 +148,13 @@ class PaymentService:
             if package.allow_view_contact:
                 user.can_view_contact = True
         else:
-            # Gói Credit: Cộng số lượt đăng tin
-            user.job_posting_credits += package.job_posting_limit
+            # Gói Credit: Cộng số lượt đăng tin (ATOMIC UPDATE)
+            # Sử dụng F() để tránh race condition khi đọc/ghi credits
+            User.objects.filter(pk=user.pk).update(
+                job_posting_credits=F('job_posting_credits') + package.job_posting_limit
+            )
+            # Refresh để lấy giá trị mới sau khi update
+            user.refresh_from_db()
         
         user.save()
         logger.info(f"Membership activated for user {user.id}: credits={user.job_posting_credits}, expires={user.membership_expires_at}")

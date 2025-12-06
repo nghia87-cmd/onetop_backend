@@ -1,0 +1,137 @@
+"""
+Job Service Layer
+Xử lý business logic liên quan đến Job posting
+"""
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from rest_framework.exceptions import PermissionDenied
+from django.db.models import F
+import logging
+
+from .models import Job
+from apps.companies.models import Company
+
+logger = logging.getLogger(__name__)
+
+
+class JobService:
+    """Service xử lý logic tạo và quản lý Job"""
+    
+    @staticmethod
+    def validate_job_posting_permission(user, company):
+        """
+        Validate quyền đăng tin việc làm
+        
+        Args:
+            user: User object (RECRUITER)
+            company: Company object
+            
+        Raises:
+            PermissionDenied: Nếu không đủ quyền hoặc hết credits
+            
+        Returns:
+            bool: True nếu validate thành công
+        """
+        # 1. Kiểm tra sở hữu công ty
+        if company and company.owner != user:
+            raise PermissionDenied(_("You do not have permission to post jobs for this company."))
+        
+        # 2. Chỉ RECRUITER mới được đăng tin
+        if user.user_type != 'RECRUITER':
+            raise PermissionDenied(_("Only recruiters can post jobs."))
+        
+        # 3. Check hạn sử dụng gói dịch vụ
+        if not user.membership_expires_at or user.membership_expires_at < timezone.now():
+            raise PermissionDenied(_("Your service package has expired. Please renew."))
+        
+        # 4. Check quyền đăng tin (VIP unlimited hoặc trừ credits)
+        if not user.has_unlimited_posting:
+            if user.job_posting_credits <= 0:
+                raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
+        
+        return True
+    
+    @staticmethod
+    def create_job(user, validated_data):
+        """
+        Tạo Job mới và xử lý trừ credits nếu cần
+        
+        Args:
+            user: User object
+            validated_data: Data đã validate từ serializer
+            
+        Returns:
+            Job: Job object đã tạo
+        """
+        company = validated_data.get('company')
+        
+        # Validate quyền
+        JobService.validate_job_posting_permission(user, company)
+        
+        # Trừ credits nếu không phải VIP (sử dụng F() để atomic update)
+        if not user.has_unlimited_posting:
+            from apps.users.models import User
+            
+            # Atomic decrement để tránh race condition
+            updated = User.objects.filter(
+                pk=user.pk,
+                job_posting_credits__gt=0  # Đảm bảo > 0 trước khi trừ
+            ).update(
+                job_posting_credits=F('job_posting_credits') - 1
+            )
+            
+            if not updated:
+                # Double-check nếu credits vừa hết (concurrent requests)
+                raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
+            
+            # Refresh để lấy credits mới
+            user.refresh_from_db()
+            logger.info(f"User {user.id} credits after posting: {user.job_posting_credits}")
+        
+        # Tạo job
+        job = Job.objects.create(**validated_data)
+        
+        logger.info(f"Job {job.id} created by user {user.id} (company: {company.name if company else 'N/A'})")
+        return job
+    
+    @staticmethod
+    def update_job(job, user, validated_data):
+        """
+        Cập nhật Job (chỉ owner được phép)
+        
+        Args:
+            job: Job object cần update
+            user: User thực hiện request
+            validated_data: Data mới
+            
+        Returns:
+            Job: Job đã update
+        """
+        # Kiểm tra ownership
+        if job.company and job.company.owner != user:
+            raise PermissionDenied(_("You do not have permission to edit this job."))
+        
+        # Update fields
+        for attr, value in validated_data.items():
+            setattr(job, attr, value)
+        
+        job.save()
+        logger.info(f"Job {job.id} updated by user {user.id}")
+        return job
+    
+    @staticmethod
+    def delete_job(job, user):
+        """
+        Xóa Job (chỉ owner được phép)
+        
+        Args:
+            job: Job object cần xóa
+            user: User thực hiện request
+        """
+        # Kiểm tra ownership
+        if job.company and job.company.owner != user:
+            raise PermissionDenied(_("You do not have permission to delete this job."))
+        
+        job_id = job.id
+        job.delete()
+        logger.info(f"Job {job_id} deleted by user {user.id}")
