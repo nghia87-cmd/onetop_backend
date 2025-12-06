@@ -184,13 +184,24 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
-# --- 11. CORS ---
+# --- 11. CORS & CSRF ---
 CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=True)
 
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
+])
+
+# CRITICAL FIX #3: CSRF Trusted Origins cho production (Django 4.0+)
+# Nếu Frontend và Backend khác domain (vd: fe.onetop.vn vs api.onetop.vn)
+# Django sẽ reject POST/PUT/DELETE requests nếu thiếu config này
+# Error: "403 Forbidden: CSRF verification failed. Request origin does not match"
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    # Production: Add 'https://yourdomain.com', 'https://www.yourdomain.com'
 ])
 
 # --- 12. EMAIL ---

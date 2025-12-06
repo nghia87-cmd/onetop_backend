@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import F
+from django.db import transaction  # CRITICAL FIX: For atomicity
 import logging
 
 from .models import Job
@@ -69,33 +70,36 @@ class JobService:
         # Validate quyền
         JobService.validate_job_posting_permission(user, company)
         
-        # Trừ credits nếu không phải VIP (sử dụng F() để atomic update)
-        # Số credit trừ lấy từ settings (có thể config khuyến mãi)
-        if not user.has_unlimited_posting:
-            from apps.users.models import User
+        # CRITICAL FIX: Wrap trong transaction.atomic() để tránh mất tiền nếu tạo Job thất bại
+        # Nếu Job.objects.create() lỗi (constraint, trigger, timeout), credits sẽ ROLLBACK
+        with transaction.atomic():
+            # Trừ credits nếu không phải VIP (sử dụng F() để atomic update)
+            # Số credit trừ lấy từ settings (có thể config khuyến mãi)
+            if not user.has_unlimited_posting:
+                from apps.users.models import User
+                
+                credit_cost = getattr(settings, 'JOB_POSTING_CREDIT_COST', 1)
+                
+                # Atomic decrement với version increment cho Optimistic Locking
+                # Phải tăng version để PaymentService detect được thay đổi credits
+                updated = User.objects.filter(
+                    pk=user.pk,
+                    job_posting_credits__gte=credit_cost  # Đảm bảo đủ credits
+                ).update(
+                    job_posting_credits=F('job_posting_credits') - credit_cost,
+                    version=F('version') + 1  # REQUIRED: Increment version for optimistic locking
+                )
+                
+                if not updated:
+                    # Double-check nếu credits vừa hết (concurrent requests)
+                    raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
+                
+                # Refresh để lấy credits mới
+                user.refresh_from_db()
+                logger.info(f"User {user.id} credits after posting: {user.job_posting_credits}")
             
-            credit_cost = getattr(settings, 'JOB_POSTING_CREDIT_COST', 1)
-            
-            # CRITICAL FIX: Atomic decrement với version increment cho Optimistic Locking
-            # Phải tăng version để PaymentService detect được thay đổi credits
-            updated = User.objects.filter(
-                pk=user.pk,
-                job_posting_credits__gte=credit_cost  # Đảm bảo đủ credits
-            ).update(
-                job_posting_credits=F('job_posting_credits') - credit_cost,
-                version=F('version') + 1  # REQUIRED: Increment version for optimistic locking
-            )
-            
-            if not updated:
-                # Double-check nếu credits vừa hết (concurrent requests)
-                raise PermissionDenied(_('You have run out of job posting credits. Please purchase a package.'))
-            
-            # Refresh để lấy credits mới
-            user.refresh_from_db()
-            logger.info(f"User {user.id} credits after posting: {user.job_posting_credits}")
-        
-        # Tạo job
-        job = Job.objects.create(**validated_data)
+            # Tạo job TRONG CÙNG TRANSACTION - nếu lỗi, credits sẽ rollback
+            job = Job.objects.create(**validated_data)
         
         logger.info(f"Job {job.id} created by user {user.id} (company: {company.name if company else 'N/A'})")
         return job
