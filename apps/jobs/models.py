@@ -22,9 +22,10 @@ class Job(SoftDeleteMixin, TimeStampedModel):
     title = models.CharField(max_length=255)
     slug = models.SlugField(
         max_length=255, 
-        unique=True, 
         blank=True,
         db_index=True  # INDEX: SEO-friendly URLs
+        # CRITICAL FIX: Removed unique=True to allow same slug after soft delete
+        # Uniqueness enforced via Meta.constraints with is_deleted=False condition
     )
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='jobs')
     
@@ -60,6 +61,22 @@ class Job(SoftDeleteMixin, TimeStampedModel):
     # Managers
     objects = SoftDeleteManager()  # Default: exclude deleted
     all_objects = models.Manager()  # Include deleted
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Công việc"
+        verbose_name_plural = "Công việc"
+        db_table = 'jobs_job'  # Tên bảng SQL rõ ràng
+        
+        # CRITICAL FIX: Partial unique constraint - allows same slug after soft delete
+        # Same pattern as Company model for consistency
+        constraints = [
+            models.UniqueConstraint(
+                fields=['slug'],
+                condition=models.Q(is_deleted=False),
+                name='unique_active_job_slug'
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.slug:

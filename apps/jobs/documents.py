@@ -50,5 +50,12 @@ class JobDocument(Document):
             'slug',
         ]
         
+        # CRITICAL FIX: Exclude soft-deleted jobs to prevent ghost records in search results
+        queryset_pagination = 10000
+        
+        def get_queryset(self):
+            """Override to exclude soft-deleted jobs from Elasticsearch index"""
+            return super().get_queryset().filter(is_deleted=False)
+        
         # Tự động cập nhật ES khi model thay đổi
         # ignore_signals = True # Bật lên nếu muốn update thủ công bằng Cronjob để tối ưu write DB

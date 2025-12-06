@@ -1,5 +1,4 @@
-"""
-Payment Service Layer
+"""Payment Service Layer
 Tách biệt Business Logic khỏi Views để dễ test và tái sử dụng
 """
 from django.conf import settings
@@ -12,6 +11,7 @@ import logging
 
 from .models import ServicePackage, Transaction
 from .vnpay import VNPayGateway, VNPayConfig
+from .optimistic_locking import retry_on_conflict, OptimisticLockError
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,7 @@ class PaymentService:
                 return trans, _("Payment Failed"), False
     
     @staticmethod
+    @retry_on_conflict(max_retries=3)  # CRITICAL FIX: Use Optimistic Locking instead of select_for_update
     def _activate_membership(user, package):
         """
         Kích hoạt quyền lợi membership cho user
@@ -120,8 +121,9 @@ class PaymentService:
         Logic phức tạp này đã được tách ra để dễ test và maintain
         
         RACE CONDITION FIX:
-        - Sử dụng F() expressions để atomic updates
-        - Refresh user sau khi update để có data mới nhất
+        - Sử dụng Optimistic Locking (version field) thay vì select_for_update
+        - retry_on_conflict decorator tự động retry khi có conflict (max 3 lần)
+        - Không lock database rows → Better scalability, No deadlocks
         """
         if not package:
             return
@@ -131,8 +133,9 @@ class PaymentService:
         
         now = timezone.now()
         
-        # LOCK user row để tránh race condition khi 2 payments cùng lúc
-        user = User.objects.select_for_update().get(pk=user.pk)
+        # CRITICAL FIX: Use get() instead of select_for_update() for Optimistic Locking
+        # Version check happens in save_with_version_check()
+        user = User.objects.get(pk=user.pk)
         
         # 1. Cộng ngày hết hạn (Chung cho cả Credit và Subscription)
         if user.membership_expires_at and user.membership_expires_at > now:
@@ -156,7 +159,9 @@ class PaymentService:
             # Refresh để lấy giá trị mới sau khi update
             user.refresh_from_db()
         
-        user.save()
+        # CRITICAL FIX: Use save_with_version_check() instead of save()
+        # This will raise OptimisticLockError if version changed (handled by retry_on_conflict)
+        user.save_with_version_check()
         logger.info(f"Membership activated for user {user.id}: credits={user.job_posting_credits}, expires={user.membership_expires_at}")
 
 

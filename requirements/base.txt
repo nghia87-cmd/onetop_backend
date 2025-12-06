@@ -1,6 +1,6 @@
 # Base requirements for production
 # Django core & extensions
-Django==6.0
+Django>=5.0,<6.0  # Fixed: Django 6.0 doesn't exist, using 5.x stable
 django-allauth==65.13.1
 django-cleanup==9.0.0
 django-cors-headers==4.9.0

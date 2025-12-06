@@ -1,5 +1,7 @@
 from django.db import models
+from django.core.validators import FileExtensionValidator
 from apps.core.models import TimeStampedModel
+from apps.core.validators import validate_file_size
 from django.contrib.auth import get_user_model
 from apps.jobs.models import Job
 
@@ -24,7 +26,18 @@ class Message(TimeStampedModel):
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
     
     text = models.TextField(blank=True)
-    attachment = models.FileField(upload_to='chat_attachments/', null=True, blank=True)
+    attachment = models.FileField(
+        upload_to='chat_attachments/', 
+        null=True, 
+        blank=True,
+        validators=[
+            validate_file_size,  # Max 5MB
+            FileExtensionValidator(
+                allowed_extensions=['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'zip']
+            )
+        ],
+        help_text='Allowed: PDF, DOC, DOCX, JPG, PNG, GIF, ZIP. Max size: 5MB'
+    )
     is_read = models.BooleanField(default=False)
 
     class Meta:

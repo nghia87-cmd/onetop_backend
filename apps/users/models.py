@@ -2,9 +2,10 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from apps.core.models import TimeStampedModel
+from apps.payments.optimistic_locking import OptimisticLockMixin
 import uuid
 
-class User(AbstractUser, TimeStampedModel):
+class User(OptimisticLockMixin, AbstractUser, TimeStampedModel):
     class UserType(models.TextChoices):
         CANDIDATE = 'CANDIDATE', _('Ứng viên')
         RECRUITER = 'RECRUITER', _('Nhà tuyển dụng')
@@ -37,6 +38,13 @@ class User(AbstractUser, TimeStampedModel):
         max_length=20, 
         choices=UserType.choices, 
         default=UserType.CANDIDATE
+    )
+    
+    # CRITICAL FIX: Add version field for Optimistic Locking (prevents race conditions)
+    # This enables concurrent payment processing without database deadlocks
+    version = models.IntegerField(
+        default=0,
+        help_text="Version field for optimistic locking - auto-incremented on each update"
     )
 
     USERNAME_FIELD = 'email' # Đăng nhập bằng Email
