@@ -29,7 +29,6 @@ class ResumeSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
-    # --- QUAN TRỌNG: Hàm này phải thụt vào trong class ResumeSerializer ---
     def to_representation(self, instance):
         """
         Ghi đè hàm này để ẩn thông tin nếu người xem không có quyền

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 1.5cm;
+        }
+        body {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #000;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .name {
+            font-size: 16pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .contact-info {
+            font-size: 10pt;
+        }
+        .section {
+            margin-bottom: 15px;
+        }
+        .section-title {
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .item {
+            margin-bottom: 8px;
+        }
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+        .subtitle {
+            font-style: italic;
+        }
+        .description {
+            margin-top: 2px;
+            margin-left: 15px;
+        }
+        .skill-list {
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="name">{{ resume.full_name }}</div>
+        <div class="contact-info">
+            {{ resume.address }} | {{ resume.phone }} | {{ resume.email }}
+        </div>
+    </div>
+
+    <!-- Education -->
+    <div class="section">
+        <div class="section-title">Education</div>
+        {% for edu in resume.educations.all %}
+        <div class="item">
+            <div class="item-header">
+                <div>{{ edu.school_name }}</div>
+                <div>
+                    {{ edu.start_date|date:"M Y" }} –
+                    {% if edu.end_date %}{{ edu.end_date|date:"M Y" }}{% else %}Present{% endif %}
+                </div>
+            </div>
+            <div class="subtitle">
+                {{ edu.degree }} in {{ edu.major }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Experience -->
+    <div class="section">
+        <div class="section-title">Experience</div>
+        {% for exp in resume.experiences.all %}
+        <div class="item">
+            <div class="item-header">
+                <div>{{ exp.company_name }}</div>
+                <div>
+                    {{ exp.start_date|date:"M Y" }} –
+                    {% if exp.is_current %}Present{% else %}{{ exp.end_date|date:"M Y" }}{% endif %}
+                </div>
+            </div>
+            <div class="subtitle">{{ exp.position }}</div>
+            <div class="description">
+                {{ exp.description|linebreaksbr }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Skills -->
+    <div class="section">
+        <div class="section-title">Skills</div>
+        <div class="skill-list">
+            {% for skill in resume.skills.all %}
+                {{ skill.name }}{% if not forloop.last %} • {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

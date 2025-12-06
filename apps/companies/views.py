@@ -20,6 +20,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
     def perform_create(self, serializer):
+        # Bảo mật: Chỉ NTD mới được tạo công ty
         if self.request.user.user_type != 'RECRUITER':
             raise PermissionDenied("Chỉ Nhà tuyển dụng mới được tạo công ty.")
         serializer.save(owner=self.request.user)

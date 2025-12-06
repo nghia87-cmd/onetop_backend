@@ -10,7 +10,7 @@ from .serializers import JobSerializer, SavedJobSerializer
 from apps.resumes.models import Resume
 
 class JobViewSet(viewsets.ModelViewSet):
-    # Tối ưu N+1 Query
+    # Tối ưu N+1 Query: Lấy luôn thông tin công ty
     queryset = Job.objects.select_related('company').filter(status='PUBLISHED').order_by('-created_at')
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -38,7 +38,7 @@ class JobViewSet(viewsets.ModelViewSet):
             if user.has_unlimited_posting:
                 pass 
             else:
-                # Không VIP thì trừ Credits
+                # Không phải VIP thì phải có Credits
                 if user.job_posting_credits <= 0:
                     raise PermissionDenied("Bạn đã hết lượt đăng tin. Vui lòng mua thêm gói.")
                 
@@ -56,7 +56,7 @@ class JobViewSet(viewsets.ModelViewSet):
         if user.user_type != 'CANDIDATE':
             return Response({"detail": "Chỉ dành cho ứng viên."}, status=403)
 
-        # Lấy CV
+        # Lấy CV chính hoặc mới nhất
         resume = Resume.objects.filter(user=user, is_primary=True).first()
         if not resume:
             resume = Resume.objects.filter(user=user).order_by('-created_at').first()
@@ -88,6 +88,7 @@ class SavedJobViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        # select_related job và company để tối ưu
         return SavedJob.objects.filter(user=self.request.user).select_related('job', 'job__company')
 
     def perform_create(self, serializer):
