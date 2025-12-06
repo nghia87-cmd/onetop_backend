@@ -40,11 +40,30 @@ services:
     # ports:
     #   - "6379:6379"  # Bỏ để tránh truy cập trực tiếp từ bên ngoài
 
-  # 4. Celery Worker (Xử lý tác vụ nặng & Email)
+  # 4. Celery Worker - Default Queue (Lightweight tasks)
   celery_worker:
     build: .
-    # Lưu ý: -A onetop_backend phải khớp với tên thư mục chứa settings.py
-    command: celery -A onetop_backend worker --loglevel=info
+    # FIX: Specify queue explicitly to avoid routing confusion
+    command: celery -A onetop_backend worker -Q celery --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
+      - REDIS_URL=redis://redis:6379/0
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - web
+      - redis
+      - db
+      - elasticsearch
+
+  # 4b. Celery Heavy Worker - PDF Generation Queue (RAM intensive)
+  celery_heavy_worker:
+    build: .
+    # Separate worker for heavy_tasks queue (PDF generation with WeasyPrint)
+    command: celery -A onetop_backend worker -Q heavy_tasks --loglevel=info --concurrency=2
     volumes:
       - .:/app
     env_file:

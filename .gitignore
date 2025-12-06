@@ -1,44 +1,169 @@
-# --- Python General ---
+# ==========================================
+# Python
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+.Python
 
-# --- Django ---
+# ==========================================
+# Django
+# ==========================================
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# --- Environment Variables (QUAN TRỌNG: Không được xóa dòng này) ---
-.env
-.env.local
-.env.production
-
-# --- Static & Media (File sinh ra tự động & file user upload) ---
+# Static and media files
 staticfiles/
 media/
+/static/
+/media/
 
-# --- Virtual Environment (Môi trường ảo) ---
+# Django migrations (optional - uncomment if needed)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# ==========================================
+# Environment Variables (CRITICAL - DO NOT COMMIT)
+# ==========================================
+.env
+.env.*
+!.env.example
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# ==========================================
+# Virtual Environments
+# ==========================================
 venv/
 env/
 .venv/
 .env_win/
+ENV/
+env.bak/
+venv.bak/
 
-# --- IDE Settings (Cấu hình editor của riêng bạn) ---
-.idea/
+# ==========================================
+# IDE & Editors
+# ==========================================
+# VSCode
 .vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
 *.swp
 *.swo
-.cache/
+*~
 
-# --- OS Generated Files ---
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ==========================================
+# Operating System
+# ==========================================
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
+._*
 
-# --- Docker ---
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ==========================================
+# Docker
+# ==========================================
 docker-compose.override.yml
 .dockerignore
-.gitignore
 
-# --- Celery Beat Schedule File ---
+# ==========================================
+# Testing & Coverage
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# ==========================================
+# Celery
+# ==========================================
 celerybeat-schedule
+celerybeat.pid
+
+# ==========================================
+# Temporary Files & Cache
+# ==========================================
+.cache/
+*.tmp
+*.bak
+*.swp
+.sass-cache/
+
+# ==========================================
+# Logs & Debugging
+# ==========================================
+*.log
+logs/
+*.log.*
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# Security & Secrets
+# ==========================================
+*.pem
+*.key
+*.crt
+*.cer
+secrets/
+
+# ==========================================
+# Database
+# ==========================================
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql
+
+# ==========================================
+# Node.js (if using frontend tools)
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock

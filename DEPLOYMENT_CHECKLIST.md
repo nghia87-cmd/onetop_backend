@@ -16,6 +16,10 @@ DEBUG=False
 SECRET_KEY=<generate-with-python-get_random_secret_key>
 ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 
+# CRITICAL: CSRF Protection for cross-origin requests
+# MUST include HTTPS protocol and all frontend domains
+CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com,https://admin.yourdomain.com
+
 # Database
 DATABASE_URL=postgres://user:password@db-host:5432/onetop_db
 
@@ -128,10 +132,10 @@ services:
       - media_files:/app/media
       - static_files:/app/staticfiles
 
-  # Celery Worker
+  # Celery Worker (Default Queue - lightweight tasks)
   celery_worker:
     build: .
-    command: celery -A onetop_backend worker --loglevel=info --concurrency=4
+    command: celery -A onetop_backend worker -Q celery --loglevel=info --concurrency=4
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
@@ -141,7 +145,22 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G  # Limit for WeasyPrint PDF generation
+          memory: 1G
+
+  # Celery Heavy Worker (PDF generation - RAM intensive)
+  celery_heavy_worker:
+    build: .
+    command: celery -A onetop_backend worker -Q heavy_tasks --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - db
+    deploy:
+      resources:
+        limits:
+          memory: 2G  # Higher memory for WeasyPrint PDF generation
 
   # Celery Beat (Scheduler)
   celery_beat:

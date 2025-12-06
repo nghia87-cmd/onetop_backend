@@ -1,12 +1,133 @@
+# ==========================================
+# Version Control
+# ==========================================
 .git
-.venv
-venv
-__pycache__
-staticfiles
-media
-*.pyc
-.env
+.gitignore
+.gitattributes
+.github/
+
+# ==========================================
+# Python
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env_win/
+
+# ==========================================
+# Django
+# ==========================================
+# Static files (will be collected in container)
+staticfiles/
+/static/
+
+# Media files (should be stored externally in production)
+media/
+
+# Development database
 db.sqlite3
+db.sqlite3-journal
+*.db
+
+# Local settings
+local_settings.py
+
+# ==========================================
+# Environment Variables
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Testing & Development
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ==========================================
+# IDE & Editors
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ==========================================
+# OS Files
+# ==========================================
 .DS_Store
-.vscode
-.idea
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ==========================================
+# Docker
+# ==========================================
+Dockerfile
+.dockerignore
+docker-compose*.yml
+.docker/
+
+# ==========================================
+# Documentation & Markdown
+# ==========================================
+README.md
+DOCS/
+docs/
+*.md
+!requirements/*.txt
+
+# ==========================================
+# CI/CD
+# ==========================================
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# ==========================================
+# Logs & Temporary Files
+# ==========================================
+*.log
+logs/
+*.tmp
+*.bak
+.cache/
+
+# ==========================================
+# Celery
+# ==========================================
+celerybeat-schedule
+celerybeat.pid
+
+# ==========================================
+# Node.js (if exists)
+# ==========================================
+node_modules/
+npm-debug.log*
+package-lock.json

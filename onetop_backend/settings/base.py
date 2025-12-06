@@ -244,7 +244,8 @@ CELERY_TIMEZONE = TIME_ZONE
 # Separate PDF generation (WeasyPrint - heavy RAM usage) from normal tasks
 CELERY_TASK_ROUTES = {
     # Heavy tasks (PDF generation) go to dedicated queue
-    'apps.resumes.tasks.generate_resume_pdf': {'queue': 'heavy_tasks'},
+    # FIX: Correct task name is generate_resume_pdf_async, not generate_resume_pdf
+    'apps.resumes.tasks.generate_resume_pdf_async': {'queue': 'heavy_tasks'},
     # All other tasks use default queue
     '*': {'queue': 'celery'},
 }
