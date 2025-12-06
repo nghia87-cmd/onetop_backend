@@ -20,7 +20,6 @@ class CompanyViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
 
     def perform_create(self, serializer):
-        # Bảo mật: Chỉ NTD mới được tạo công ty
         if self.request.user.user_type != 'RECRUITER':
             raise PermissionDenied("Chỉ Nhà tuyển dụng mới được tạo công ty.")
         serializer.save(owner=self.request.user)
@@ -28,7 +27,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
         """
-        API Thống kê Dashboard cho Nhà tuyển dụng.
+        Dashboard thống kê cho Nhà tuyển dụng.
         """
         user = request.user
         if user.user_type != 'RECRUITER':
