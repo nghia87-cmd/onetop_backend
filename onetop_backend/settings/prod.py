@@ -76,11 +76,46 @@ if not CORS_ALLOWED_ORIGINS:
 # --- EMAIL (SMTP thật cho production) ---
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
-# --- LOGGING (Production-level) ---
+# --- LOGGING (Production-level with Structured JSON) ---
+import logging
+import json
+from datetime import datetime
+
+class JSONFormatter(logging.Formatter):
+    """
+    Custom formatter for structured JSON logging
+    Compatible with ELK Stack, CloudWatch, Datadog, etc.
+    """
+    def format(self, record):
+        log_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'module': record.module,
+            'function': record.funcName,
+            'line': record.lineno,
+        }
+        
+        # Add exception info if present
+        if record.exc_info:
+            log_data['exception'] = self.formatException(record.exc_info)
+        
+        # Add extra fields (request_id, user_id, etc.)
+        if hasattr(record, 'request_id'):
+            log_data['request_id'] = record.request_id
+        if hasattr(record, 'user_id'):
+            log_data['user_id'] = record.user_id
+        
+        return json.dumps(log_data, ensure_ascii=False)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
+        'json': {
+            '()': JSONFormatter,
+        },
         'verbose': {
             'format': '[{levelname}] {asctime} {name} {message}',
             'style': '{',
@@ -92,11 +127,11 @@ LOGGING = {
             'filename': BASE_DIR / 'logs' / 'django.log',
             'maxBytes': 1024 * 1024 * 10,  # 10 MB
             'backupCount': 5,
-            'formatter': 'verbose',
+            'formatter': 'json',  # Use JSON formatter
         },
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+            'formatter': 'json',  # Use JSON formatter for console too
         },
     },
     'root': {

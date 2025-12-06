@@ -7,7 +7,6 @@ class ResumesConfig(AppConfig):
     verbose_name = "Quản lý hồ sơ"
 
     def ready(self):
-        # Đảm bảo Celery đăng ký task khi ứng dụng khởi động
-        import apps.resumes.tasks
         # Import signals để đăng ký
         import apps.resumes.signals
+        # NOTE: Không cần import tasks - Celery autodiscover_tasks() sẽ tự tìm

@@ -1,15 +1,16 @@
 from django.db import models
 from django.utils.text import slugify
 from apps.core.models import TimeStampedModel
+from apps.core.soft_delete import SoftDeleteMixin
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-class Company(TimeStampedModel):
-    name = models.CharField(max_length=255, unique=True)
+class Company(SoftDeleteMixin, TimeStampedModel):
+    # Remove unique=True - sẽ dùng UniqueConstraint bên dưới
+    name = models.CharField(max_length=255)
     slug = models.SlugField(
-        max_length=255, 
-        unique=True, 
+        max_length=255,
         blank=True,
         db_index=True  # INDEX: SEO-friendly URLs, hay query theo slug
     )
@@ -33,3 +34,18 @@ class Company(TimeStampedModel):
 
     class Meta:
         verbose_name_plural = "Companies"
+        
+        # FIX: Unique constraint chỉ áp dụng cho active records
+        # Cho phép tạo lại Company cùng tên sau khi soft delete
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'],
+                condition=models.Q(is_deleted=False),
+                name='unique_active_company_name'
+            ),
+            models.UniqueConstraint(
+                fields=['slug'],
+                condition=models.Q(is_deleted=False),
+                name='unique_active_company_slug'
+            ),
+        ]

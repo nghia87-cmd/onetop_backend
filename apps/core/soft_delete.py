@@ -200,23 +200,25 @@ class SoftDeleteAdminMixin:
 
 
 # Utility functions
-def cleanup_old_deleted_objects(model, days=90):
+def cleanup_old_deleted_objects(model, days=90, batch_size=1000):
     """
     Permanently delete objects that were soft-deleted > X days ago
+    Uses BATCH DELETION to avoid table locks and transaction log overflow
     
     Usage:
         # In management command or Celery task
         from apps.core.soft_delete import cleanup_old_deleted_objects
         from apps.jobs.models import Job
         
-        cleanup_old_deleted_objects(Job, days=90)
+        cleanup_old_deleted_objects(Job, days=90, batch_size=1000)
     
     Args:
         model: Model class with SoftDeleteMixin
         days: Days threshold (default 90)
+        batch_size: Number of objects to delete per batch (default 1000)
     
     Returns:
-        int: Number of objects permanently deleted
+        int: Total number of objects permanently deleted
     """
     from datetime import timedelta
     
@@ -228,7 +230,25 @@ def cleanup_old_deleted_objects(model, days=90):
         deleted_at__lt=cutoff_date
     )
     
-    count = old_deleted.count()
-    old_deleted.hard_delete()
+    total_count = old_deleted.count()
+    deleted_count = 0
     
-    return count
+    # Batch deletion to avoid locking entire table
+    while True:
+        # Get PKs of objects to delete (limit to batch_size)
+        pks = list(
+            old_deleted.values_list('pk', flat=True)[:batch_size]
+        )
+        
+        if not pks:
+            break
+        
+        # Hard delete batch
+        batch_deleted = model.all_objects.filter(pk__in=pks).delete()[0]
+        deleted_count += batch_deleted
+        
+        # Log progress
+        if deleted_count % (batch_size * 10) == 0:
+            print(f"Deleted {deleted_count}/{total_count} {model.__name__} objects...")
+    
+    return deleted_count

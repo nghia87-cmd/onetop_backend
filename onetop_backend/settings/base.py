@@ -289,6 +289,17 @@ SENTRY_DSN = env('SENTRY_DSN', default='')
 SENTRY_ENVIRONMENT = env('SENTRY_ENVIRONMENT', default='development')
 SENTRY_TRACES_SAMPLE_RATE = env.float('SENTRY_TRACES_SAMPLE_RATE', default=0.1)  # 10% of transactions
 
+# --- 22. ELASTICSEARCH SEARCH CONFIGURATION ---
+# Boost values for search relevance tuning
+ES_SEARCH_TITLE_BOOST = env.int('ES_SEARCH_TITLE_BOOST', default=3)
+ES_SEARCH_FUZZINESS = env('ES_SEARCH_FUZZINESS', default='AUTO')
+ES_SEARCH_FIELDS = env.list('ES_SEARCH_FIELDS', default=[
+    'title',
+    'requirements',
+    'description',
+    'company.name'
+])
+
 
 # --- 20. DATABASE CONCURRENCY CONTROL ---
 # Enable Optimistic Locking for high-traffic models

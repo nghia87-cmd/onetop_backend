@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 # Import Q từ elasticsearch_dsl và đổi tên để tránh nhầm với Django Q
 from elasticsearch_dsl import Q as ES_Q
 
@@ -41,13 +42,21 @@ class JobViewSet(viewsets.ModelViewSet):
             return super().list(request, *args, **kwargs)
 
         # 2. Nếu CÓ từ khóa -> Dùng Elasticsearch
-        # Tìm kiếm trên nhiều trường, ưu tiên Title (nhân 3 điểm)
-        q = ES_Q("multi_match", query=search_term, fields=[
-            'title^3',          # Title khớp: x3 điểm
-            'requirements', 
-            'description', 
-            'company.name'
-        ], fuzziness='AUTO')    # Chấp nhận lỗi chính tả nhẹ
+        # Get search config from settings (externalized for easy tuning)
+        title_boost = getattr(settings, 'ES_SEARCH_TITLE_BOOST', 3)
+        fuzziness = getattr(settings, 'ES_SEARCH_FUZZINESS', 'AUTO')
+        search_fields = getattr(settings, 'ES_SEARCH_FIELDS', [
+            'title', 'requirements', 'description', 'company.name'
+        ])
+        
+        # Build search fields with title boost
+        fields_with_boost = [f'{search_fields[0]}^{title_boost}'] + search_fields[1:]
+        
+        # Tìm kiếm trên nhiều trường với configurable boost
+        q = ES_Q("multi_match", 
+                query=search_term, 
+                fields=fields_with_boost,
+                fuzziness=fuzziness)
 
         # Filter: Chỉ tìm Job đang PUBLISHED
         search = JobDocument.search().query(q).filter('term', status='PUBLISHED')
