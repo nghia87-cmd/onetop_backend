@@ -5,8 +5,49 @@ Cấu hình cho môi trường production - BẢO MẬT CAO
 
 from .base import *
 
+# --- SENTRY INTEGRATION (Centralized Error Tracking) ---
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+    SENTRY_AVAILABLE = True
+except ImportError:
+    SENTRY_AVAILABLE = False
+    print("⚠️ sentry-sdk not installed. Run: pip install sentry-sdk")
+
 # --- DEBUG MODE ---
 DEBUG = False
+
+# --- SENTRY INITIALIZATION ---
+if SENTRY_AVAILABLE and SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(),
+            RedisIntegration(),
+        ],
+        environment=SENTRY_ENVIRONMENT,
+        
+        # Performance Monitoring (APM)
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions (recommended for production)
+        profiles_sample_rate=1.0,
+        
+        # Send default PII (Personally Identifiable Information)
+        send_default_pii=False,  # Bảo mật - không gửi thông tin cá nhân
+        
+        # Before sending events, this function will be called
+        before_send=lambda event, hint: event if event.get('level') != 'debug' else None,
+    )
+    print(f"✅ Sentry initialized for environment: {SENTRY_ENVIRONMENT}")
+elif not SENTRY_DSN:
+    print("⚠️ SENTRY_DSN not set - running without centralized error tracking")
+else:
+    print("⚠️ Sentry SDK not available - install with: pip install sentry-sdk")
 
 # --- SECURITY SETTINGS ---
 # FRONTEND_URL bắt buộc phải có trong production

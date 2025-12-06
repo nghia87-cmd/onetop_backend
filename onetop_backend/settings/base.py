@@ -154,6 +154,11 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+    # API Versioning - Dễ dàng support v2, v3 sau này
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ['v1', 'v2'],  # Sẵn sàng cho v2
+    'VERSION_PARAM': 'version',
 }
 
 # --- 9. JWT (SIMPLE JWT) ---
@@ -269,4 +274,35 @@ JOB_ALERT_BATCH_SIZE = env.int('JOB_ALERT_BATCH_SIZE', default=500)
 
 # PDF generation timeout (seconds)
 PDF_GENERATION_TIMEOUT = env.int('PDF_GENERATION_TIMEOUT', default=30)
+
+# --- 20. DATABASE CONCURRENCY CONTROL ---
+# Enable Optimistic Locking for high-traffic models
+# Set to True khi traffic > 10,000 concurrent users
+USE_OPTIMISTIC_LOCKING = env.bool('USE_OPTIMISTIC_LOCKING', default=False)
+
+# Max retry attempts for optimistic lock conflicts
+OPTIMISTIC_LOCK_MAX_RETRIES = env.int('OPTIMISTIC_LOCK_MAX_RETRIES', default=3)
+
+# --- 21. CENTRALIZED LOGGING & MONITORING ---
+# Sentry DSN for error tracking (Production only)
+SENTRY_DSN = env('SENTRY_DSN', default='')
+SENTRY_ENVIRONMENT = env('SENTRY_ENVIRONMENT', default='development')
+SENTRY_TRACES_SAMPLE_RATE = env.float('SENTRY_TRACES_SAMPLE_RATE', default=0.1)  # 10% of transactions
+
+
+# --- 20. DATABASE CONCURRENCY CONTROL ---
+# Enable Optimistic Locking for high-traffic models
+# Set to True khi traffic > 10,000 concurrent users
+USE_OPTIMISTIC_LOCKING = env.bool('USE_OPTIMISTIC_LOCKING', default=False)
+
+# Max retry attempts for optimistic lock conflicts
+OPTIMISTIC_LOCK_MAX_RETRIES = env.int('OPTIMISTIC_LOCK_MAX_RETRIES', default=3)
+
+# --- 20. DATABASE CONCURRENCY CONTROL ---
+# Enable Optimistic Locking for high-traffic models
+# Set to True khi traffic > 10,000 concurrent users
+USE_OPTIMISTIC_LOCKING = env.bool('USE_OPTIMISTIC_LOCKING', default=False)
+
+# Max retry attempts for optimistic lock conflicts
+OPTIMISTIC_LOCK_MAX_RETRIES = env.int('OPTIMISTIC_LOCK_MAX_RETRIES', default=3)
 
