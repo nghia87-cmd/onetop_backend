@@ -8,7 +8,7 @@ class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = '__all__'
-        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'views_count']
+        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'views_count', 'is_deleted', 'deleted_at']
 
 class SavedJobSerializer(serializers.ModelSerializer):
     # Nhúng thông tin Job vào để hiển thị luôn
