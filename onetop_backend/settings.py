@@ -19,8 +19,10 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1'])
 )
 
-# Đọc file .env
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+# Đọc file .env (optional on Render - uses environment variables)
+env_file = os.path.join(BASE_DIR, '.env')
+if os.path.exists(env_file):
+    environ.Env.read_env(env_file)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
@@ -28,7 +30,11 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = env('ALLOWED_HOSTS')
+# Allow Render.com domains
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+RENDER_EXTERNAL_HOSTNAME = env('RENDER_EXTERNAL_HOSTNAME', default=None)
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 # --- 2. ỨNG DỤNG (APPS) ---
@@ -262,24 +268,28 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 # --- ELASTICSEARCH CONFIGURATION ---
+# Optional: Disable if not using Elasticsearch on Render
 ELASTICSEARCH_DSL = {
     'default': {
-        'hosts': 'http://elasticsearch:9200'
+        'hosts': env('ELASTICSEARCH_HOST', default='http://localhost:9200')
     },
 }
 
 # --- WEBSOCKET TICKET CONFIGURATION ---
 # Thời gian sống của ticket WebSocket (giây)
 WEBSOCKET_TICKET_EXPIRY = env.int('WEBSOCKET_TICKET_EXPIRY', default=10)
-
 # --- FRONTEND URL (REQUIRED IN PRODUCTION) ---
 # URL frontend để redirect sau thanh toán
-FRONTEND_URL = env('FRONTEND_URL')
-if not FRONTEND_URL and not DEBUG:
-    raise ValueError("FRONTEND_URL must be set in production environment")
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
+# Production security settings
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # For Render proxy
     SECURE_BROWSER_XSS_FILTER = True

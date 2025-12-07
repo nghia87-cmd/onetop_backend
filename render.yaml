@@ -1,0 +1,130 @@
+# Render Blueprint for OneTop Backend
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # Web Service (Django + Daphne for WebSockets)
+  - type: web
+    name: onetop-backend
+    runtime: python
+    plan: starter  # Free tier, upgrade to starter ($7/mo) for production
+    buildCommand: "./build.sh"
+    startCommand: "daphne -b 0.0.0.0 -p $PORT onetop_backend.asgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: ALLOWED_HOSTS
+        sync: false  # Set manually after getting domain
+      - key: DATABASE_URL
+        fromDatabase:
+          name: onetop-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false  # Set to your frontend URL
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false  # Set to your frontend URL
+      - key: ELASTICSEARCH_HOST
+        value: http://localhost:9200  # Optional: Add Elasticsearch if needed
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+    autoDeploy: true  # Auto-deploy on git push
+
+  # Celery Worker (Background tasks)
+  - type: worker
+    name: onetop-celery-worker
+    runtime: python
+    buildCommand: "pip install -r requirements/base.txt"
+    startCommand: "celery -A onetop_backend worker --loglevel=info"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: onetop-backend
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: onetop-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+    autoDeploy: true
+
+  # Celery Beat (Scheduled tasks)
+  - type: worker
+    name: onetop-celery-beat
+    runtime: python
+    buildCommand: "pip install -r requirements/base.txt"
+    startCommand: "celery -A onetop_backend beat --loglevel=info"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: onetop-backend
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: onetop-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: onetop-redis
+          property: connectionString
+    autoDeploy: true
+
+databases:
+  - name: onetop-db
+    plan: starter  # Free tier available
+    databaseName: onetop
+    user: onetop
+    ipAllowList: []  # Allow all IPs (required for external access)
+
+services:
+  - type: redis
+    name: onetop-redis
+    plan: starter  # Free tier: 25MB
+    maxmemoryPolicy: allkeys-lru  # Evict least recently used keys when full
+    ipAllowList: []  # Allow all IPs

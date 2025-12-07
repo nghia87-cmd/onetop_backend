@@ -1,0 +1,36 @@
+# Render deployment - ignore unnecessary files
+
+# Development
+.env
+.env.local
+*.pyc
+__pycache__/
+.pytest_cache/
+.cache/
+
+# Media files (should use S3/CloudStorage in production)
+media/
+
+# Documentation
+*.md
+!README.md
+
+# Docker files
+Dockerfile
+docker-compose.yml
+nginx.conf
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests
+tests/
+conftest.py
+pytest.ini
