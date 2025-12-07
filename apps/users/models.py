@@ -16,6 +16,7 @@ class User(OptimisticLockMixin, AbstractUser, TimeStampedModel):
     
     email = models.EmailField(_('Email Address'), unique=True)
     full_name = models.CharField(_('Full Name'), max_length=255)
+    phone_number = models.CharField(_('Phone Number'), max_length=15, blank=True, default='', help_text="Số điện thoại liên hệ")
     avatar = models.ImageField(upload_to='avatars/', default='default_avatar.png', null=True, blank=True)
     
     # 2 trường quan trọng cho gói dịch vụ (Payments)

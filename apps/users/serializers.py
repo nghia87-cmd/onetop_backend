@@ -10,16 +10,17 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'avatar', 'user_type', 'job_posting_credits', 'membership_expires_at']
+        fields = ['id', 'email', 'full_name', 'phone_number', 'avatar', 'user_type', 'job_posting_credits', 'membership_expires_at']
         # [BẢO MẬT] Giữ nguyên các trường read_only như lần trước
         read_only_fields = ['id', 'email', 'date_joined', 'job_posting_credits', 'membership_expires_at', 'user_type']
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
+    phone_number = serializers.CharField(max_length=15, required=False, allow_blank=True)
     
     class Meta:
         model = User
-        fields = ['email', 'password', 'full_name', 'user_type']
+        fields = ['email', 'password', 'full_name', 'user_type', 'phone_number']
 
     def create(self, validated_data):
         user_type = validated_data.get('user_type')
@@ -33,9 +34,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(
             email=validated_data['email'],
-            username=validated_data['email'],
+            username=validated_data['email'],  # Username = Email (no separate username field)
             password=validated_data['password'],
             full_name=validated_data['full_name'],
+            phone_number=validated_data.get('phone_number', ''),  # CRITICAL FIX: Save phone_number
             user_type=user_type,
             is_active=is_active # <-- Tham số quan trọng
         )
