@@ -1,111 +1,193 @@
-services:
-  # 1. Django Web Server
-  web:
-    build: .
-    # Chạy Daphne (ASGI) để hỗ trợ Chat Realtime
-    command: daphne -b 0.0.0.0 -p 8000 onetop_backend.asgi:application
-    volumes:
-      - .:/app
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    environment:
-      # Cấu hình để Docker Web nhìn thấy Docker DB và Redis
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
-      - REDIS_URL=redis://redis:6379/0
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    depends_on:
-      - db
-      - redis
-      - elasticsearch
+version: '3.8'
 
-  # 2. Database PostgreSQL
+# ==========================================
+# OneTop Backend - Docker Compose Configuration
+# Development & Production Ready
+# ==========================================
+
+services:
+  # Database
   db:
     image: postgres:15-alpine
+    container_name: onetop_db
+    restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=onetop_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    # SECURITY: Không expose port ra host (chỉ cho internal network)
-    # ports:
-    #   - "5432:5432"  # Bỏ dòng này để tránh expose DB ra internet
+      POSTGRES_DB: ${POSTGRES_DB:-onetop_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    healthcheck:
+      test: pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-onetop_db}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
 
-  # 3. Redis (Cache & WebSocket Message Broker)
+  # Cache & Message Broker
   redis:
     image: redis:7-alpine
-    # SECURITY: Không expose port ra host (chỉ cho internal network)
-    # ports:
-    #   - "6379:6379"  # Bỏ để tránh truy cập trực tiếp từ bên ngoài
-
-  # 4. Celery Worker - Default Queue (Lightweight tasks)
-  celery_worker:
-    build: .
-    # FIX: Specify queue explicitly to avoid routing confusion
-    command: celery -A onetop_backend worker -Q celery --loglevel=info --concurrency=4
+    container_name: onetop_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
-      - .:/app
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
-      - REDIS_URL=redis://redis:6379/0
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    depends_on:
-      - web
-      - redis
-      - db
-      - elasticsearch
+      - redis_data:/data
+    healthcheck:
+      test: redis-cli ping
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
 
-  # 4b. Celery Heavy Worker - PDF Generation Queue (RAM intensive)
-  celery_heavy_worker:
-    build: .
-    # Separate worker for heavy_tasks queue (PDF generation with WeasyPrint)
-    command: celery -A onetop_backend worker -Q heavy_tasks --loglevel=info --concurrency=2
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
-      - REDIS_URL=redis://redis:6379/0
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    depends_on:
-      - web
-      - redis
-      - db
-      - elasticsearch
-  # 5. Celery Beat (Lên lịch tự động - VD: Quét gói VIP)
-  celery_beat:
-    build: .
-    command: celery -A onetop_backend beat --loglevel=info
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/onetop_db
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - web
-      - redis
-      - db
-
-  # Thêm dịch vụ Elasticsearch
+  # Search Engine
   elasticsearch:
     image: elasticsearch:8.11.1
+    container_name: onetop_elasticsearch
+    restart: unless-stopped
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false # Tắt bảo mật user/pass cho môi trường dev
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Giới hạn RAM để không bị crash
-    # SECURITY: Chỉ expose trong môi trường DEV, PRODUCTION nên bỏ
-    ports:
-      - "127.0.0.1:9200:9200"  # Chỉ bind vào localhost, không cho external access
+      discovery.type: single-node
+      xpack.security.enabled: false
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      bootstrap.memory_lock: true
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: curl -f http://localhost:9200/_cluster/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - backend
+    ports:
+      - 127.0.0.1:9200:9200
+
+  # Django Web Application
+  web:
+    build: .
+    container_name: onetop_web
+    restart: unless-stopped
+    command: daphne -b 0.0.0.0 -p 8000 onetop_backend.asgi:application
+    volumes:
+      - .:/app
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-onetop_db}
+      REDIS_URL: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: curl -f http://localhost:8000/admin/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend
+
+  # Celery Worker - Default Queue
+  celery_worker:
+    build: .
+    container_name: onetop_celery_worker
+    restart: unless-stopped
+    command: celery -A onetop_backend worker -Q celery -l info -c 4 --max-tasks-per-child=1000
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-onetop_db}
+      REDIS_URL: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      C_FORCE_ROOT: true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: celery -A onetop_backend inspect ping -d celery@$$HOSTNAME
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - backend
+
+  # Celery Heavy Worker - PDF Generation
+  celery_heavy_worker:
+    build: .
+    container_name: onetop_celery_heavy_worker
+    restart: unless-stopped
+    command: celery -A onetop_backend worker -Q heavy_tasks -l info -c 2 --max-tasks-per-child=50
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-onetop_db}
+      REDIS_URL: redis://redis:6379/0
+      C_FORCE_ROOT: true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    networks:
+      - backend
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build: .
+    container_name: onetop_celery_beat
+    restart: unless-stopped
+    command: celery -A onetop_backend beat -l info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-onetop_db}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
 
 volumes:
   postgres_data:
+  redis_data:
   elasticsearch_data:
+  static_data:
+  media_data:
+
+networks:
+  backend:
+    driver: bridge
